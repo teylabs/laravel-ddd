@@ -61,6 +61,18 @@ class Layer
         return Path::normalizeNamespace($namespace);
     }
 
+    /**
+     * Select the namespace without changing the caller's name normalization.
+     */
+    public function namespaceForObject(string $type, string $name, bool $absolute = false): string
+    {
+        return match (true) {
+            $absolute => $this->namespace,
+            str($name)->startsWith('\\') => $this->guessNamespaceFromName($name),
+            default => $this->namespaceFor($type),
+        };
+    }
+
     public function guessNamespaceFromName(string $name): string
     {
         $baseName = class_basename($name);
