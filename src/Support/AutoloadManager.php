@@ -3,13 +3,11 @@
 namespace Tey\LaravelDDD\Support;
 
 use Closure;
-use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Conditionable;
@@ -170,25 +168,14 @@ class AutoloadManager
             $this->boot();
         }
 
-        foreach (static::$registeredProviders as $provider) {
-            $this->app->register($provider);
-        }
+        $registration = new DomainRegistration;
 
-        collect(static::$registeredListeners)
-            ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => Event::listen($event, $listener)
-            )
-            );
-
-        collect(static::$registeredSubscribers)
-            ->each(fn (string $subscriber) => Event::subscribe($subscriber)
-            );
+        $registration->providers($this->app, static::$registeredProviders);
+        $registration->listeners(static::$registeredListeners);
+        $registration->subscribers(static::$registeredSubscribers);
 
         if ($this->app->runningInConsole() && ! $this->isConsoleBooted()) {
-            ConsoleApplication::starting(function (ConsoleApplication $artisan) {
-                foreach (static::$registeredCommands as $command) {
-                    $artisan->resolve($command);
-                }
-            });
+            $registration->commands(fn () => static::$registeredCommands);
 
             $this->consoleBooted = true;
         }
