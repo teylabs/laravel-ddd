@@ -45,7 +45,7 @@ class DomainViewModelMakeCommand extends DomainGeneratorCommand
         ];
     }
 
-    public function handle()
+    protected function prepareDomainInput(): void
     {
         if ($this->shouldCreateBaseViewModel()) {
             $baseViewModel = config('ddd.base_view_model');
@@ -65,7 +65,9 @@ class DomainViewModelMakeCommand extends DomainGeneratorCommand
             ]);
         }
 
-        return parent::handle();
+        // Preserve base-view-model creation before resolving this command's
+        // domain (including the order of its output and interactive prompts).
+        parent::prepareDomainInput();
     }
 
     protected function shouldCreateBaseViewModel(): bool
