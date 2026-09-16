@@ -129,6 +129,15 @@ class GeneratorBlueprint
         return $this->schema->fullyQualifiedName;
     }
 
+    /**
+     * Related references retain domain naming conventions. Schema callbacks
+     * are evaluated by the child generator when it creates its own blueprint.
+     */
+    public function getModelFor(string $name)
+    {
+        return $this->domain->model($name);
+    }
+
     public function getFactoryFor(string $name)
     {
         return $this->domain->factory($name);
