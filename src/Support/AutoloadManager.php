@@ -4,21 +4,16 @@ namespace Tey\LaravelDDD\Support;
 
 use Closure;
 use Illuminate\Console\Application as ConsoleApplication;
-use Illuminate\Console\Command;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Events\DiscoverEvents;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Conditionable;
-use Lorisleiva\Lody\Lody;
 use Mockery;
-use ReflectionClass;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 use Tey\LaravelDDD\Facades\DDD;
@@ -329,11 +324,7 @@ class AutoloadManager
             return [];
         }
 
-        return Lody::classesFromFinder($this->finder($paths))
-            ->isNotAbstract()
-            ->isInstanceOf(ServiceProvider::class)
-            ->values()
-            ->toArray();
+        return (new DomainDiscovery)->providers($this->finder($paths));
     }
 
     public function discoverCommands(): array
@@ -354,11 +345,7 @@ class AutoloadManager
             return [];
         }
 
-        return Lody::classesFromFinder($this->finder($paths))
-            ->isNotAbstract()
-            ->isInstanceOf(Command::class)
-            ->values()
-            ->toArray();
+        return (new DomainDiscovery)->commands($this->finder($paths));
     }
 
     public function discoverListeners(): array
@@ -379,54 +366,7 @@ class AutoloadManager
             return ['listeners' => [], 'subscribers' => []];
         }
 
-        $basePath = $this->app->basePath();
-
-        DiscoverEvents::guessClassNamesUsing(
-            fn (SplFileInfo $file, string $base) => Lody::resolveClassname($file)
-        );
-
-        $discoveredEvents = rescue(
-            fn () => DiscoverEvents::within($paths, $basePath),
-            [],
-            false
-        );
-
-        DiscoverEvents::$guessClassNamesUsingCallback = null;
-
-        $listeners = [];
-        $subscriberCandidates = [];
-
-        collect($discoveredEvents)->each(function (array $eventListeners, string $event) use (&$listeners, &$subscriberCandidates) {
-            collect($eventListeners)->each(function (string $listenerMethod) use ($event, &$listeners, &$subscriberCandidates) {
-                [$listener, $method] = Str::contains($listenerMethod, '@')
-                    ? explode('@', $listenerMethod)
-                    : [$listenerMethod, 'handle'];
-
-                $subscriberCandidates[$listener] = true;
-
-                $resolved = $method === 'handle' || $method === '__invoke'
-                    ? $listener
-                    : [$listener, $method];
-
-                if (! in_array($resolved, $listeners[$event] ?? [], true)) {
-                    $listeners[$event][] = $resolved;
-                }
-            });
-        });
-
-        $subscribers = collect(array_keys($subscriberCandidates))
-            ->filter(fn (string $class) => rescue(function () use ($class) {
-                $method = (new ReflectionClass($class))->getMethod('subscribe');
-
-                return $method->isPublic() && $method->getNumberOfParameters() === 1;
-            }, false, false))
-            ->values()
-            ->toArray();
-
-        return [
-            'listeners' => $listeners,
-            'subscribers' => $subscribers,
-        ];
+        return (new DomainDiscovery)->listeners($paths, $this->app->basePath());
     }
 
     public function cacheCommands()
