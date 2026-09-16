@@ -2,8 +2,6 @@
 
 namespace Tey\LaravelDDD\Commands\Concerns;
 
-use Illuminate\Console\ManuallyFailedException;
-use Illuminate\Contracts\Console\Isolatable;
 use Illuminate\Support\Str;
 use ReflectionClass;
 use Symfony\Component\Console\Input\InputInterface;
@@ -25,30 +23,12 @@ trait ResolvesDomainFromInput
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         try {
-            // Symfony has bound and validated the input, and Laravel has already
-            // prompted for missing arguments. Isolatable commands keep handler-
-            // time preparation so a rejected lock cannot prompt or create files.
-            if (! $this instanceof Isolatable) {
-                $this->prepareHandle();
-                $this->handlePrepared = true;
-            }
-
+            // Keep preparation in handle(): consumer overrides may still need
+            // to inspect or rewrite raw input before delegating to the parent.
             return parent::execute($input, $output);
-        } catch (ManuallyFailedException $exception) {
-            // Preparation used to run inside Laravel's handler dispatch, where
-            // manual failures are rendered and converted to a failure status.
-            $this->components->error($exception->getMessage());
-
-            return self::FAILURE;
         } finally {
             $this->blueprint = null;
-            $this->handlePrepared = false;
         }
-    }
-
-    protected function beforeHandle()
-    {
-        $this->prepareDomainInput();
     }
 
     protected function configure(): void
@@ -120,7 +100,7 @@ trait ResolvesDomainFromInput
         return $domainName;
     }
 
-    protected function prepareDomainInput(): void
+    protected function beforeHandle()
     {
         $nameInput = $this->getNameInput();
 

@@ -14,7 +14,7 @@ beforeEach(function () {
     Artisan::registerCommand($this->generator);
 });
 
-it('prepares domain input before a custom handler and preserves container injection and status', function () {
+it('lets custom handlers prepare domain input and preserves container injection and status', function () {
     $status = Artisan::call('ddd:lifecycle', ['name' => 'Billing:CreateInvoice']);
 
     expect($status)->toBe(17)
@@ -123,8 +123,8 @@ it('prepares once when a custom handler delegates to the parent and retains lega
 
     expect(Artisan::call('ddd:class', ['name' => 'Billing:Invoice']))->toBe(0)
         ->and($command->steps)->toBe([
+            ['handle', null],
             ['before', 'Domain\\Billing\\Invoice'],
-            ['handle', 'Domain\\Billing\\Invoice'],
             ['after', 'Domain\\Billing\\Invoice'],
         ])
         ->and($resolutions)->toBe(1)
@@ -199,3 +199,41 @@ it('leaves domain preparation behind laravels isolation gate', function (bool $a
         ->and($resolutions)->toBe($acquired ? 1 : 0)
         ->and(file_exists(base_path('src/Domain/Billing/Invoice.php')))->toBe($acquired);
 })->with(['acquired' => true, 'already locked' => false]);
+
+it('lets custom handlers rewrite raw input before parent preparation', function () {
+    $command = new class(app(Filesystem::class)) extends DomainClassMakeCommand
+    {
+        public array $rawInput = [];
+
+        public function handle()
+        {
+            $this->rawInput = [$this->argument('name'), $this->option('domain')];
+            $this->input->setArgument('name', 'Shipping:Parcel');
+
+            return parent::handle();
+        }
+    };
+    Artisan::registerCommand($command);
+
+    expect(Artisan::call('ddd:class', ['name' => 'Billing:Invoice']))->toBe(0)
+        ->and($command->rawInput)->toBe(['Billing:Invoice', null])
+        ->and(file_exists(base_path('src/Domain/Shipping/Parcel.php')))->toBeTrue()
+        ->and(file_exists(base_path('src/Domain/Billing/Invoice.php')))->toBeFalse();
+});
+
+it('lets custom handlers return without preparing or resolving a schema', function () {
+    $command = new class(app(Filesystem::class)) extends DomainClassMakeCommand
+    {
+        public function handle()
+        {
+            return 23;
+        }
+    };
+    Artisan::registerCommand($command);
+    DDD::resolveObjectSchemaUsing(function () {
+        throw new RuntimeException('An early-return handler must not resolve a schema');
+    });
+
+    expect(Artisan::call('ddd:class', ['name' => 'UnqualifiedName']))->toBe(23)
+        ->and(file_exists(base_path('src/Domain/UnqualifiedName.php')))->toBeFalse();
+});

@@ -22,6 +22,8 @@ class LifecycleGenerator extends DomainGeneratorCommand
 
     public function handle(?Filesystem $files = null)
     {
+        $this->beforeHandle();
+
         $this->invocations[] = [
             'name' => $this->argument('name'),
             'domain' => $this->option('domain'),

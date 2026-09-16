@@ -4,15 +4,6 @@ namespace Tey\LaravelDDD\Commands\Concerns;
 
 trait HandleHooks
 {
-    protected bool $handlePrepared = false;
-
-    protected function prepareHandle(): void
-    {
-        if (! $this->handlePrepared) {
-            $this->beforeHandle();
-        }
-    }
-
     protected function beforeHandle()
     {
         //
@@ -25,13 +16,13 @@ trait HandleHooks
 
     /**
      * Retain the legacy handler hooks and generator return-value normalization.
-     * Domain input is prepared separately by the command execution lifecycle.
+     * Preparation stays inside Laravel's handler dispatch and isolation gate.
      *
      * @return int|bool|null
      */
     public function handle()
     {
-        $this->prepareHandle();
+        $this->beforeHandle();
 
         /** @phpstan-ignore-next-line staticMethod.void */
         $result = parent::handle();

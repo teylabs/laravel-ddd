@@ -27,7 +27,7 @@ class DomainModelMakeCommand extends ModelMakeCommand
      */
     public function handle()
     {
-        $this->prepareHandle();
+        $this->beforeHandle();
 
         $this->createBaseModelIfNeeded();
 
