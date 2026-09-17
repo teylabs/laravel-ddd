@@ -137,6 +137,23 @@ class TestCase extends Orchestra
         return $this;
     }
 
+    /**
+     * Point Testbench at the fixture root instead of its own installed skeleton.
+     *
+     * Everything else follows from this: base_path(), app_path() and the
+     * composer dump-autoload subprocess all resolve inside the fixture root, so
+     * the suite stops writing into vendor/.
+     */
+    public static function applicationBasePath()
+    {
+        return FixtureApplication::basePath();
+    }
+
+    protected function getApplicationBasePath()
+    {
+        return FixtureApplication::basePath();
+    }
+
     protected function resolveApplicationBasePath()
     {
         return $this->getApplicationBasePath();
