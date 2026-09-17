@@ -105,11 +105,32 @@ const NON_SOLVER_MARKERS = [
     'proc_open(): fork failed',
 ];
 
+/**
+ * Composer detects GitHub Actions and repeats its error as a workflow
+ * annotation: a single "::error ::" line with newlines encoded as %0A. That
+ * line lands in the captured output, and left alone it is unparseable material
+ * that would block every genuine advisory case.
+ *
+ * It is decoded rather than skipped. The annotation restates the problem list,
+ * so decoding puts that copy through exactly the same checks as the plain text
+ * — a second, non-advisory failure cannot hide inside the encoding.
+ */
+function decodeGithubAnnotations(string $output): string
+{
+    return preg_replace_callback(
+        '/^::(?:error|warning|notice)\s*::(.*)$/m',
+        fn (array $matches) => str_replace(['%0D', '%0A', '%25'], ["\r", "\n", '%'], $matches[1]),
+        $output,
+    ) ?? $output;
+}
+
 function classifyInstallOutput(string $output, int $exitCode): array
 {
     if ($exitCode === 0) {
         return [CLASSIFY_SUCCESS, 'composer exited 0'];
     }
+
+    $output = decodeGithubAnnotations($output);
 
     if ($exitCode !== SOLVER_EXIT_CODE) {
         return [CLASSIFY_UNEXPECTED, sprintf(
@@ -249,6 +270,14 @@ function parseProblemBlock(string $block): array
             continue;
         }
 
+        // The decoded annotation restates the whole error, so the solver header
+        // reappears mid-section. It is a header, not an explanation, and the
+        // problems that follow it are split into their own blocks and checked
+        // like any others.
+        if (str_starts_with(trim($line), SOLVER_HEADER)) {
+            continue;
+        }
+
         if (isAllowedFooter($line)) {
             continue;
         }
@@ -309,6 +338,15 @@ function runSelfTest(): int
         ['php-requirement.log', 2, CLASSIFY_UNEXPECTED],
         ['network-failure.log', 1, CLASSIFY_UNEXPECTED],
         ['successful-install.log', 0, CLASSIFY_SUCCESS],
+        // Exactly what composer writes on a GitHub runner: the problem list in
+        // plain text, then the same list again as an encoded "::error ::"
+        // annotation. Reproduced from run 35268507690, where treating that line
+        // as unparseable material blocked every genuine advisory case.
+        ['real-github-annotated-advisory.log', 2, CLASSIFY_ADVISORY],
+        // The annotation carries a conflict the plain section never mentions.
+        // Decoding it is what surfaces the conflict; skipping the line would
+        // have hidden a real failure behind an advisory.
+        ['annotation-hides-conflict.log', 2, CLASSIFY_UNEXPECTED],
         // An advisory problem alongside an unparsed trailing line: the line is
         // not a bullet, a continuation or a known footer, so it could be a
         // second failure and must block.
