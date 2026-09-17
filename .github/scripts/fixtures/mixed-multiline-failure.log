@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires laravel/framework 11.44.0, found laravel/framework[v11.44.0] but these were not loaded, because they are affected by security advisories ("PKSA-m5cs-t1y6-qpcs"). Go to https://packagist.org/security-advisories/ to find advisory details.
+  Problem 2
+    - Root composer.json requires tey/laravel-ddd *@dev -> satisfiable by tey/laravel-ddd[dev-chore/framework-compatibility].
+The lock file is not up to date with the latest changes in composer.json, it is recommended that you run `composer update`.

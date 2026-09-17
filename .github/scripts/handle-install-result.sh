@@ -8,9 +8,9 @@
 # Three outcomes:
 #   success            - install worked; the job carries on and its tests decide.
 #   advisory-blocked   - every solver problem was a security advisory. The
-#                        release is one nobody can install today, so this is a
-#                        coverage gap, not a defect: recorded as COVERAGE
-#                        UNAVAILABLE and the job does NOT fail.
+#                        resolution is blocked by composer default advisory
+#                        policy, so CI has nothing to test against: recorded as
+#                        COVERAGE UNAVAILABLE and the job does NOT fail.
 #   unexpected-failure - anything else. The job fails.
 #
 # Nothing here weakens security policy: an advisory-blocked run is reported as
@@ -77,7 +77,7 @@ case "$classification" in
       echo "### ${label}"
       echo
       echo "> **COVERAGE UNAVAILABLE — not tested.** Every release matching this job's constraint is currently blocked by a security advisory, so composer could not install anything to test against."
-      echo "> This is non-blocking because no consumer can install these releases either; it is a gap in what CI can cover, not a result about this package."
+      echo "> This is non-blocking because this CI resolution is blocked by composer default advisory policy, so there is nothing to test against. It is a gap in what CI can cover, not a result about this package. A lockfile-pinned install, or one configured with a different advisory policy, may still resolve these releases."
       echo "> It is explicitly **not** a pass. Nothing was exercised."
       echo
       echo "> Classifier: \`${reason}\`"

@@ -23,6 +23,58 @@ const STATUS_INSTALL_OK = 'install-ok';
 const STATUS_FAILED = 'failed';
 
 /**
+ * Every matrix leg that must report in. A leg whose job died before it could
+ * record anything simply leaves no artifact, and without this list that silence
+ * would read as "nothing wrong". The set has to match exactly: missing,
+ * duplicated and unexpected keys all block.
+ */
+const EXPECTED_KEYS = [
+    'released-l11',
+    'released-l12',
+    'released-l13',
+    'lowest-l11',
+    'lowest-l12',
+    'lowest-l13',
+    'floor-11-44-0',
+    'floor-12-0-0',
+    'floor-13-0-0',
+];
+
+/**
+ * @param  array<int, array<string, mixed>>  $statuses
+ * @return array<int, string> problems with the set of reporting legs
+ */
+function checkExpectedKeys(array $statuses): array
+{
+    $seen = [];
+
+    foreach ($statuses as $status) {
+        $key = (string) ($status['key'] ?? '');
+        $seen[] = $key === '' ? '(no key)' : $key;
+    }
+
+    $problems = [];
+
+    foreach (array_count_values($seen) as $key => $count) {
+        if ($count > 1) {
+            $problems[] = "{$key} reported {$count} times";
+        }
+    }
+
+    foreach (array_diff(EXPECTED_KEYS, $seen) as $missing) {
+        $problems[] = "{$missing} never reported a coverage status";
+    }
+
+    foreach (array_diff($seen, EXPECTED_KEYS) as $unexpected) {
+        $problems[] = "{$unexpected} is not an expected matrix leg";
+    }
+
+    sort($problems);
+
+    return $problems;
+}
+
+/**
  * @param  array<int, array<string, mixed>>  $statuses
  * @return array{rows: array<int, array{label: string, status: string, note: string}>, blocking: bool, tested: int, unavailable: int}
  */
@@ -165,6 +217,32 @@ function runSelfTest(): int
         $failures++;
     }
 
+    // The set of reporting legs is checked separately from their verdicts,
+    // because a leg that dies before recording anything leaves no artifact at
+    // all and would otherwise be invisible.
+    $full = array_map(fn (string $key) => ['key' => $key, 'label' => $key, 'status' => STATUS_TESTED], EXPECTED_KEYS);
+
+    $keyCases = [
+        'a complete matrix has no key problems' => [$full, 0],
+        'a missing leg is a key problem' => [array_slice($full, 1), 1],
+        'a duplicated leg is a key problem' => [array_merge($full, [$full[0]]), 1],
+        'an unexpected leg is a key problem' => [array_merge($full, [['key' => 'surprise', 'label' => 'surprise', 'status' => STATUS_TESTED]]), 1],
+        'a status with no key is a key problem' => [array_merge(array_slice($full, 1), [['label' => 'anon', 'status' => STATUS_TESTED]]), 2],
+    ];
+
+    foreach ($keyCases as $name => [$statuses, $expectedCount]) {
+        $problems = checkExpectedKeys($statuses);
+
+        if (count($problems) === $expectedCount) {
+            printf("  ok   %-45s problems=%d\n", $name, count($problems));
+
+            continue;
+        }
+
+        printf("  FAIL %-45s problems=%d (expected %d: %s)\n", $name, count($problems), $expectedCount, implode('; ', $problems));
+        $failures++;
+    }
+
     // An empty set means nothing reported in — that cannot be read as success.
     $empty = summarizeCoverage([]);
 
@@ -204,10 +282,23 @@ if ($statuses === []) {
 }
 
 $result = summarizeCoverage($statuses);
+$keyProblems = checkExpectedKeys($statuses);
 
 $lines = [];
 $lines[] = '## Compatibility coverage';
 $lines[] = '';
+
+if ($keyProblems !== []) {
+    $lines[] = '> **Incomplete reporting — blocking.** The coverage table below does not describe the whole matrix:';
+    $lines[] = '';
+
+    foreach ($keyProblems as $problem) {
+        $lines[] = "> - {$problem}";
+    }
+
+    $lines[] = '';
+}
+
 $lines[] = sprintf(
     '%d tested, %d coverage unavailable, %d total.',
     $result['tested'],
@@ -225,13 +316,21 @@ foreach ($result['rows'] as $row) {
 $lines[] = '';
 
 if ($result['unavailable'] > 0) {
-    $lines[] = '> Rows marked *coverage unavailable* were **not tested**. Every release matching them is currently blocked by a security advisory, so nothing could be installed to test against. They are non-blocking because no consumer can install those releases either — they are not passes.';
+    $lines[] = '> Rows marked *coverage unavailable* were **not tested**. Every release matching them is currently blocked by a security advisory, so nothing could be installed to test against. They are non-blocking because this CI resolution is blocked by composer default advisory policy, leaving nothing to test against — they are not passes. An install from an existing lock file, or one under a different advisory policy, may still resolve them.';
     $lines[] = '';
 }
 
 file_put_contents($summaryFile, implode("\n", $lines)."\n", FILE_APPEND);
 
 echo implode("\n", $lines)."\n";
+
+if ($keyProblems !== []) {
+    foreach ($keyProblems as $problem) {
+        fwrite(STDOUT, "::error::Coverage reporting is incomplete: {$problem}\n");
+    }
+
+    exit(1);
+}
 
 if ($result['blocking']) {
     fwrite(STDOUT, "::error::Compatibility run has real failures; see the coverage table.\n");

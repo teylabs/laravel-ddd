@@ -53,6 +53,28 @@ const ADVISORY_PHRASE = 'because they are affected by security advisories';
  * to block. Kept broad on purpose — a false "unexpected" is a visible red
  * build, a false "advisory" is a silent coverage lie.
  */
+/**
+ * Composer's exit code for a dependency-resolution failure. Any other non-zero
+ * code came from somewhere else — a script, a transport error, a crash — and
+ * can never be an advisory block no matter what the output happens to contain.
+ */
+const SOLVER_EXIT_CODE = 2;
+
+/**
+ * Standard trailing advice composer prints after the problem list. These state
+ * no failure of their own. Anything else that is neither a bullet nor a
+ * continuation of one is unrecognized material, and unrecognized material
+ * blocks — that is the only way a second, non-advisory failure cannot hide in
+ * the gap between the lines this parser understands.
+ */
+const ALLOWED_FOOTERS = [
+    'Running update with --no-dev does not mean require-dev is ignored',
+    'Use the option --with-all-dependencies (-W)',
+    'Use the option --with-dependencies (-W)',
+    'Installation failed, reverting ./composer.json',
+    'You can also try re-running composer require',
+];
+
 const DISQUALIFYING_MARKERS = [
     'does not satisfy that requirement',
     'your php version',
@@ -89,6 +111,14 @@ function classifyInstallOutput(string $output, int $exitCode): array
         return [CLASSIFY_SUCCESS, 'composer exited 0'];
     }
 
+    if ($exitCode !== SOLVER_EXIT_CODE) {
+        return [CLASSIFY_UNEXPECTED, sprintf(
+            'composer exited %d; only the solver exit code %d can indicate an advisory block',
+            $exitCode,
+            SOLVER_EXIT_CODE,
+        )];
+    }
+
     $haystack = strtolower($output);
 
     foreach (NON_SOLVER_MARKERS as $marker) {
@@ -118,7 +148,15 @@ function classifyInstallOutput(string $output, int $exitCode): array
     }
 
     foreach ($blocks as $index => $block) {
-        $bullets = bulletsOf($block);
+        [$bullets, $unrecognized] = parseProblemBlock($block);
+
+        if ($unrecognized !== null) {
+            return [CLASSIFY_UNEXPECTED, sprintf(
+                'problem %d contains material this parser does not recognize, so a second failure could be hiding in it: %s',
+                $index + 1,
+                trim(substr($unrecognized, 0, 160)),
+            )];
+        }
 
         if ($bullets === []) {
             return [CLASSIFY_UNEXPECTED, sprintf('problem %d has no explanation lines to classify', $index + 1)];
@@ -168,19 +206,74 @@ function splitProblemBlocks(string $section): array
     return array_values(array_filter(array_map('trim', $parts), fn (string $part) => $part !== ''));
 }
 
-function bulletsOf(string $block): array
+/**
+ * Split a problem block into its explanation bullets, keeping wrapped
+ * continuation text attached to the bullet it belongs to.
+ *
+ * Returns [bullets, firstUnrecognizedLine]. A non-null second element means the
+ * block contained something that is neither a bullet, a continuation, a blank
+ * line nor a known composer footer — in which case the caller must block,
+ * because an unparsed line could be a second failure the advisory check would
+ * otherwise skip straight past.
+ *
+ * @return array{0: array<int, string>, 1: string|null}
+ */
+function parseProblemBlock(string $block): array
 {
     $bullets = [];
+    $current = null;
 
     foreach (preg_split('/\R/', $block) ?: [] as $line) {
         $line = rtrim($line);
 
+        if (trim($line) === '') {
+            continue;
+        }
+
         if (preg_match('/^\s*-\s+(.*)$/', $line, $matches) === 1) {
-            $bullets[] = $matches[1];
+            if ($current !== null) {
+                $bullets[] = $current;
+            }
+
+            $current = $matches[1];
+
+            continue;
+        }
+
+        // Indented text directly under a bullet is that bullet's wrapped
+        // continuation, so it has to be classified as part of it rather than
+        // dropped.
+        if ($current !== null && preg_match('/^\s+\S/', $line) === 1) {
+            $current .= ' '.trim($line);
+
+            continue;
+        }
+
+        if (isAllowedFooter($line)) {
+            continue;
+        }
+
+        return [$bullets, $line];
+    }
+
+    if ($current !== null) {
+        $bullets[] = $current;
+    }
+
+    return [$bullets, null];
+}
+
+function isAllowedFooter(string $line): bool
+{
+    $line = trim($line);
+
+    foreach (ALLOWED_FOOTERS as $footer) {
+        if (str_starts_with($line, $footer)) {
+            return true;
         }
     }
 
-    return $bullets;
+    return false;
 }
 
 function isAdvisoryBullet(string $bullet): bool
@@ -216,6 +309,17 @@ function runSelfTest(): int
         ['php-requirement.log', 2, CLASSIFY_UNEXPECTED],
         ['network-failure.log', 1, CLASSIFY_UNEXPECTED],
         ['successful-install.log', 0, CLASSIFY_SUCCESS],
+        // An advisory problem alongside an unparsed trailing line: the line is
+        // not a bullet, a continuation or a known footer, so it could be a
+        // second failure and must block.
+        ['mixed-multiline-failure.log', 2, CLASSIFY_UNEXPECTED],
+        // The disqualifying reason only appears on a wrapped continuation line;
+        // dropping continuations would have classified this as advisory-only.
+        ['wrapped-continuation-conflict.log', 2, CLASSIFY_UNEXPECTED],
+        // Advisory output carrying a non-solver exit code is never an advisory
+        // block, whatever the text says.
+        ['floor-advisory-only.log', 1, CLASSIFY_UNEXPECTED],
+        ['floor-advisory-only.log', 255, CLASSIFY_UNEXPECTED],
         // A success exit code always wins, even over scary-looking output: the
         // caller only classifies when composer actually failed.
         ['floor-advisory-only.log', 0, CLASSIFY_SUCCESS],

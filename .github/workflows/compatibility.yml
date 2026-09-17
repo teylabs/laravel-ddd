@@ -8,11 +8,13 @@ name: compatibility
 # versions it actually ended up with. The matrix label is not evidence of what
 # installed — see the "report resolved versions" step in each job.
 #
-# Coverage policy: a release that every consumer is currently forbidden to
-# install is a gap in what CI can cover, not a defect in this package, so those
-# runs are recorded as COVERAGE UNAVAILABLE and do not block. Real test failures
-# and any install failure that is not positively identified as an advisory block
-# still fail the run. Security policy is never relaxed to manufacture a pass.
+# Coverage policy: when composer's default advisory policy blocks every release
+# a job could resolve, CI has nothing to test against. That is a gap in what CI
+# can cover, not a defect in this package, so those runs are recorded as
+# COVERAGE UNAVAILABLE and do not block — they are never reported as passed or
+# tested. Real test failures, and any install failure that is not positively
+# identified as an advisory block, still fail the run. Security policy is never
+# relaxed to manufacture a pass.
 
 on:
   schedule:
@@ -30,6 +32,8 @@ on:
       - '.github/scripts/floor-smoke.php'
       - '.github/scripts/classify-install-failure.php'
       - '.github/scripts/handle-install-result.sh'
+      - '.github/scripts/mark-tested.sh'
+      - '.github/scripts/summarize-coverage.php'
       - '.github/scripts/fixtures/**'
 
 permissions:
@@ -98,13 +102,19 @@ jobs:
         # advisories in prose and would poison the matching. The step always
         # exits 0; the classification decides what happens next.
         run: |
-          set +e
+          # Setup and the --no-update require stay under set -e: if they fail
+          # the step fails and the job blocks. They must never be able to feed
+          # their output into the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
           composer config minimum-stability stable
-          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update > "${RUNNER_TEMP}/install.log" 2>&1
-          require_exit=$?
-          composer update --prefer-stable --prefer-dist --no-interaction >> "${RUNNER_TEMP}/install.log" 2>&1
-          update_exit=$?
-          if [ "$require_exit" -ne 0 ]; then echo "$require_exit" > "${RUNNER_TEMP}/install.exit"; else echo "$update_exit" > "${RUNNER_TEMP}/install.exit"; fi
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+
+          set +e
+          composer update --prefer-stable --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
           cat "${RUNNER_TEMP}/install.log"
           exit 0
 
@@ -130,7 +140,9 @@ jobs:
         with:
           name: coverage-status-${{ matrix.key }}
           path: ${{ runner.temp }}/coverage-status/*.json
-          if-no-files-found: warn
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
           retention-days: 7
 
   lowest-installable:
@@ -173,12 +185,18 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # Setup and the --no-update require stay under set -e: if they fail
+          # the step fails and the job blocks. They must never be able to feed
+          # their output into the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+
           set +e
-          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update > "${RUNNER_TEMP}/install.log" 2>&1
-          require_exit=$?
-          composer update --prefer-lowest --prefer-dist --no-interaction >> "${RUNNER_TEMP}/install.log" 2>&1
-          update_exit=$?
-          if [ "$require_exit" -ne 0 ]; then echo "$require_exit" > "${RUNNER_TEMP}/install.exit"; else echo "$update_exit" > "${RUNNER_TEMP}/install.exit"; fi
+          composer update --prefer-lowest --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
           cat "${RUNNER_TEMP}/install.log"
           exit 0
 
@@ -204,7 +222,9 @@ jobs:
         with:
           name: coverage-status-${{ matrix.key }}
           path: ${{ runner.temp }}/coverage-status/*.json
-          if-no-files-found: warn
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
           retention-days: 7
 
   floor-smoke:
@@ -254,7 +274,11 @@ jobs:
         # make this job green would be reporting a floor that a consumer cannot
         # actually install.
         run: |
-          set +e
+          # Fixture setup and the --no-update require stay under set -e: a
+          # failure there is a broken workflow and must block, and its output
+          # must never reach the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
           mkdir -p "${RUNNER_TEMP}/floor-consumer"
           cd "${RUNNER_TEMP}/floor-consumer"
           printf '{}' > composer.json
@@ -262,11 +286,13 @@ jobs:
           composer config minimum-stability dev
           composer config prefer-stable true
           composer config repositories.package "{\"type\":\"path\",\"url\":\"${GITHUB_WORKSPACE}\",\"options\":{\"symlink\":false}}"
-          composer require "tey/laravel-ddd:*@dev" "laravel/framework:${{ matrix.floor }}" --no-interaction --no-update > "${RUNNER_TEMP}/install.log" 2>&1
-          require_exit=$?
-          composer update --no-dev --prefer-dist --no-interaction >> "${RUNNER_TEMP}/install.log" 2>&1
-          update_exit=$?
-          if [ "$require_exit" -ne 0 ]; then echo "$require_exit" > "${RUNNER_TEMP}/install.exit"; else echo "$update_exit" > "${RUNNER_TEMP}/install.exit"; fi
+          composer require "tey/laravel-ddd:*@dev" "laravel/framework:${{ matrix.floor }}" --no-interaction --no-update
+
+          set +e
+          composer update --no-dev --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
           cat "${RUNNER_TEMP}/install.log"
           exit 0
 
@@ -296,7 +322,9 @@ jobs:
         with:
           name: coverage-status-${{ matrix.key }}
           path: ${{ runner.temp }}/coverage-status/*.json
-          if-no-files-found: warn
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
           retention-days: 7
 
   dev-canary:
@@ -417,8 +445,18 @@ jobs:
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Fail if the classifier self-test did not pass
-        if: needs.classifier-self-test.result != 'success'
+      - name: Fail if any non-canary job did not succeed
+        # The coverage table only describes legs that got far enough to record a
+        # status. A job that died earlier — a broken setup step, a failed
+        # artifact upload, a cancelled runner — would otherwise be invisible
+        # here, so every non-canary job result is gated directly as well. The
+        # dev canary is excluded on purpose: it is allowed to be red.
+        if: >-
+          needs.classifier-self-test.result != 'success' ||
+          needs.released.result != 'success' ||
+          needs.lowest-installable.result != 'success' ||
+          needs.floor-smoke.result != 'success'
         run: |
-          echo "::error::The install classifier self-test did not pass, so no coverage verdict in this run can be trusted."
+          echo "::error::classifier-self-test=${{ needs.classifier-self-test.result }} released=${{ needs.released.result }} lowest-installable=${{ needs.lowest-installable.result }} floor-smoke=${{ needs.floor-smoke.result }}"
+          echo "::error::A compatibility job did not succeed. Coverage reported below only covers legs that recorded a status."
           exit 1

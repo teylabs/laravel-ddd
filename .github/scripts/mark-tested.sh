@@ -15,8 +15,11 @@ status_key="$1"
 status_file="${RUNNER_TEMP:-/tmp}/coverage-status/${status_key}.json"
 
 if [ ! -f "$status_file" ]; then
-  echo "::warning::No coverage status recorded for ${status_key}; nothing to promote"
-  exit 0
+  # The tests passed but no status was ever recorded, so the summary would have
+  # nothing to promote and would report this leg as missing. That is a broken
+  # workflow, not a coverage gap, and it must not pass quietly.
+  echo "::error::No coverage status recorded for ${status_key}; the run cannot report what it covered"
+  exit 1
 fi
 
 php -r '
