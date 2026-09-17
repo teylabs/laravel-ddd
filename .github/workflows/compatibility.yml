@@ -1,0 +1,165 @@
+name: compatibility
+
+# Early warning for upstream framework changes that land while this repository
+# is quiet. run-tests.yml only fires on pushes to main and on pull requests, so
+# a Laravel release on its own never triggers a fresh resolution here.
+#
+# Every job in this workflow resolves dependencies from scratch (no lock file is
+# committed) and reports the exact versions it ended up with, because the matrix
+# label is not evidence of what was installed. See "report resolved versions".
+
+on:
+  schedule:
+    # Mondays 06:00 UTC. Weekly is enough to catch a release before a consumer
+    # does without burning a scheduled run for every patch.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-stable:
+    name: latest stable - L${{ matrix.laravel }} - P${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4']
+        laravel: ['13.*', '12.*', '11.*']
+        include:
+          - laravel: '13.*'
+            testbench: '11.*'
+          - laravel: '12.*'
+            testbench: '10.*'
+          - laravel: '11.*'
+            testbench: '^9.11'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+          composer update --prefer-stable --prefer-dist --no-interaction
+
+      - name: Report resolved versions
+        run: bash .github/scripts/report-resolved-versions.sh "latest stable - L${{ matrix.laravel }} - P${{ matrix.php }}"
+
+      - name: Execute tests
+        run: vendor/bin/pest --ci --no-coverage
+
+  lowest-installable:
+    # Deliberately NOT called a "floor" job. --prefer-lowest does not resolve to
+    # this package's declared floors: the test toolchain constrains the graph
+    # well above them (pestphp/pest-plugin-laravel requires laravel/framework
+    # ^11.45.2|^12.52.0|^13.0), and released versions blocked by security
+    # advisories are skipped entirely. This job reports what actually installs
+    # and flags the gap rather than claiming coverage it does not have.
+    name: lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3']
+        laravel: ['13.*', '12.*', '11.*']
+        include:
+          - laravel: '13.*'
+            testbench: '11.*'
+            declared-floor: '13.0.0'
+          - laravel: '12.*'
+            testbench: '10.*'
+            declared-floor: '12.0.0'
+          - laravel: '11.*'
+            testbench: '^9.11'
+            declared-floor: '11.44.0'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+          composer update --prefer-lowest --prefer-dist --no-interaction
+
+      - name: Report resolved versions
+        run: bash .github/scripts/report-resolved-versions.sh "lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}" "${{ matrix['declared-floor'] }}"
+
+      - name: Execute tests
+        run: vendor/bin/pest --ci --no-coverage
+
+  dev-canary:
+    # Non-blocking. A failure here means the NEXT Laravel major is drifting away
+    # from this package, which is worth seeing early but must never be confused
+    # with released-version coverage or gate anything.
+    name: dev canary - laravel/framework dev-master
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          # dev-master pulls symfony/console ^8.1, which requires php >= 8.4.1.
+          # 8.3 cannot resolve the canary at all.
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer require "laravel/framework:dev-master" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction
+
+      - name: Report resolved versions
+        run: bash .github/scripts/report-resolved-versions.sh "dev canary - dev-master"
+
+      - name: Execute tests
+        run: vendor/bin/pest --ci --no-coverage
+
+  report:
+    name: compatibility summary
+    runs-on: ubuntu-latest
+    needs: [latest-stable, lowest-installable, dev-canary]
+    if: always()
+
+    steps:
+      - name: Summarize outcomes
+        run: |
+          {
+            echo "## Compatibility run"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| latest stable | ${{ needs.latest-stable.result }} |"
+            echo "| lowest installable | ${{ needs.lowest-installable.result }} |"
+            echo "| dev canary (non-blocking) | ${{ needs.dev-canary.result }} |"
+            echo
+            echo "Per-job resolved PHP / framework / Testbench versions are in each job's summary."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if released-version coverage regressed
+        # The dev canary is excluded on purpose: it is allowed to be red.
+        if: needs.latest-stable.result != 'success' || needs.lowest-installable.result != 'success'
+        run: |
+          echo "::error::Compatibility testing against released Laravel versions failed. See the resolved-version report in the failing job."
+          exit 1
