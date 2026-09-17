@@ -15,7 +15,8 @@ trait HandleHooks
     }
 
     /**
-     * Handle the command, with before and after hooks.
+     * Retain the legacy handler hooks and generator return-value normalization.
+     * Preparation stays inside Laravel's handler dispatch and isolation gate.
      *
      * @return int|bool|null
      */

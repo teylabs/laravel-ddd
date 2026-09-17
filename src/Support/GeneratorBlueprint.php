@@ -95,11 +95,7 @@ class GeneratorBlueprint
             return $blueprint;
         }
 
-        $namespace = match (true) {
-            $this->isAbsoluteName => $this->layer->namespace,
-            str($this->nameInput)->startsWith('\\') => $this->layer->guessNamespaceFromName($this->nameInput),
-            default => $this->layer->namespaceFor($this->type),
-        };
+        $namespace = $this->layer->namespaceForObject($this->type, $this->nameInput, $this->isAbsoluteName);
 
         $fullyQualifiedName = str($this->normalizedName)
             ->start($namespace.'\\')
@@ -131,6 +127,15 @@ class GeneratorBlueprint
     public function qualifyClass($name)
     {
         return $this->schema->fullyQualifiedName;
+    }
+
+    /**
+     * Related references retain domain naming conventions. Schema callbacks
+     * are evaluated by the child generator when it creates its own blueprint.
+     */
+    public function getModelFor(string $name)
+    {
+        return $this->domain->model($name);
     }
 
     public function getFactoryFor(string $name)

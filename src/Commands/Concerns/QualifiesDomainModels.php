@@ -6,8 +6,8 @@ trait QualifiesDomainModels
 {
     protected function qualifyModel(string $model)
     {
-        if ($domain = $this->blueprint->domain) {
-            $domainModel = $domain->model($model);
+        if ($this->blueprint->domain) {
+            $domainModel = $this->blueprint->getModelFor($model);
 
             return $domainModel->fullyQualifiedName;
         }

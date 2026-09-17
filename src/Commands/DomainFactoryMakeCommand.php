@@ -27,15 +27,13 @@ class DomainFactoryMakeCommand extends FactoryMakeCommand
 
     protected function preparePlaceholders(): array
     {
-        $domain = $this->blueprint->domain;
-
         $name = $this->getNameInput();
 
         $modelName = $this->option('model') ?: $this->guessModelName($name);
 
-        $domainModel = $domain->model($modelName);
+        $domainModel = $this->blueprint->getModelFor($modelName);
 
-        $domainFactory = $domain->factory($name);
+        $domainFactory = $this->blueprint->getFactoryFor($name);
 
         return [
             'namespacedModel' => $domainModel->fullyQualifiedName,
@@ -51,6 +49,6 @@ class DomainFactoryMakeCommand extends FactoryMakeCommand
             $name = substr($name, 0, -7);
         }
 
-        return $this->blueprint->domain->model(class_basename($name))->name;
+        return $this->blueprint->getModelFor(class_basename($name))->name;
     }
 }

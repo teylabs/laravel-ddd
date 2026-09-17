@@ -132,11 +132,7 @@ class Domain
     {
         $layer = $this->intendedLayerFor($type);
 
-        $namespace = match (true) {
-            $absolute => $layer->namespace,
-            str($name)->startsWith('\\') => $layer->guessNamespaceFromName($name),
-            default => $layer->namespaceFor($type),
-        };
+        $namespace = $layer->namespaceForObject($type, $name, $absolute);
 
         $baseName = str($name)->replace($namespace, '')
             ->replace(['\\', '/'], '\\')

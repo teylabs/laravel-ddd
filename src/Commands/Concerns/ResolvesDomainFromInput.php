@@ -4,8 +4,9 @@ namespace Tey\LaravelDDD\Commands\Concerns;
 
 use Illuminate\Support\Str;
 use ReflectionClass;
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Tey\LaravelDDD\Support\Domain;
+use Symfony\Component\Console\Output\OutputInterface;
 use Tey\LaravelDDD\Support\DomainResolver;
 use Tey\LaravelDDD\Support\GeneratorBlueprint;
 
@@ -18,6 +19,17 @@ trait ResolvesDomainFromInput
         QualifiesDomainModels;
 
     protected $nameIsAbsolute = false;
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        try {
+            // Keep preparation in handle(): consumer overrides may still need
+            // to inspect or rewrite raw input before delegating to the parent.
+            return parent::execute($input, $output);
+        } finally {
+            $this->blueprint = null;
+        }
+    }
 
     protected function configure(): void
     {

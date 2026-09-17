@@ -14,49 +14,21 @@ trait ForwardsToDomainCommands
 
         $nameWithSubfolder = $subfolder ? "{$subfolder}/{$arguments['name']}" : $arguments['name'];
 
-        return match ($command) {
-            'make:request' => $this->runCommand('ddd:request', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:model' => $this->runCommand('ddd:model', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:factory' => $this->runCommand('ddd:factory', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:policy' => $this->runCommand('ddd:policy', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:migration' => $this->runCommand('ddd:migration', [
-                ...$arguments,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:seeder' => $this->runCommand('ddd:seeder', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            'make:controller' => $this->runCommand('ddd:controller', [
-                ...$arguments,
-                'name' => $nameWithSubfolder,
-                '--domain' => $this->blueprint->domain->dotName,
-            ], $this->output),
-
-            default => $this->runCommand($command, $arguments, $this->output),
+        $domainCommand = match ($command) {
+            'make:request', 'make:model', 'make:factory', 'make:policy',
+            'make:migration', 'make:seeder', 'make:controller' => Str::replaceStart('make:', 'ddd:', $command),
+            default => $command,
         };
+
+        if ($domainCommand !== $command) {
+            // Migration names describe a table operation, not a nested class.
+            $arguments = [
+                ...$arguments,
+                ...($command === 'make:migration' ? [] : ['name' => $nameWithSubfolder]),
+                '--domain' => $this->blueprint->domain->dotName,
+            ];
+        }
+
+        return $this->runCommand($domainCommand, $arguments, $this->output);
     }
 }
