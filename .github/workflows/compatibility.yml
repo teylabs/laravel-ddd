@@ -1,17 +1,15 @@
 name: compatibility
 
-# Early warning for upstream framework changes that land while this repository
-# is quiet. run-tests.yml only fires on pushes to main and on pull requests, so
-# a Laravel release on its own never triggers a fresh resolution here.
+# Fresh dependency resolution on a schedule, because run-tests.yml only fires on
+# pushes to main and on pull requests: a Laravel release while this repository is
+# quiet never triggers a new resolution on its own.
 #
-# Every job in this workflow resolves dependencies from scratch (no lock file is
-# committed) and reports the exact versions it ended up with, because the matrix
-# label is not evidence of what was installed. See "report resolved versions".
+# Every job resolves from scratch (no lock file is committed) and reports the
+# versions it actually ended up with. The matrix label is not evidence of what
+# installed — see the "report resolved versions" step in each job.
 
 on:
   schedule:
-    # Mondays 06:00 UTC. Weekly is enough to catch a release before a consumer
-    # does without burning a scheduled run for every patch.
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
@@ -19,8 +17,17 @@ permissions:
   contents: read
 
 jobs:
-  latest-stable:
-    name: latest stable - L${{ matrix.laravel }} - P${{ matrix.php }}
+  released:
+    # Released-version coverage. composer.json sets minimum-stability:dev, and
+    # --prefer-stable only *prefers* stable, so it will still take a dev branch
+    # when no release satisfies the constraint. This job pins stability to
+    # stable so a dev branch cannot be silently reported as released coverage.
+    #
+    # That makes the job honest rather than green: Laravel 11 currently has no
+    # installable release at all (every v11.0.0-v11.56.1 is blocked by security
+    # advisories), so its install step fails and is reported as unavailable
+    # released coverage instead of quietly resolving 11.x-dev.
+    name: released - L${{ matrix.laravel }} - P${{ matrix.php }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -46,24 +53,40 @@ jobs:
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
           coverage: none
 
-      - name: Install dependencies
+      - name: Install released dependencies
+        id: install
+        continue-on-error: true
         run: |
+          composer config minimum-stability stable
           composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
           composer update --prefer-stable --prefer-dist --no-interaction
 
+      - name: Report unavailable released coverage
+        if: steps.install.outcome != 'success'
+        run: |
+          {
+            echo "### released - L${{ matrix.laravel }} - P${{ matrix.php }}"
+            echo
+            echo "> **No released coverage.** No released \`laravel/framework:${{ matrix.laravel }}\` could be installed with stability pinned to stable."
+            echo "> This is reported as a failure rather than falling back to a dev branch, which would not be released coverage."
+            echo "> A security advisory blocking every release of a supported major is the expected cause; check the install step log."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::No released laravel/framework ${{ matrix.laravel }} could be installed; released coverage is unavailable for this major"
+          exit 1
+
       - name: Report resolved versions
-        run: bash .github/scripts/report-resolved-versions.sh "latest stable - L${{ matrix.laravel }} - P${{ matrix.php }}"
+        run: bash .github/scripts/report-resolved-versions.sh "released - L${{ matrix.laravel }} - P${{ matrix.php }}"
 
       - name: Execute tests
         run: vendor/bin/pest --ci --no-coverage
 
   lowest-installable:
-    # Deliberately NOT called a "floor" job. --prefer-lowest does not resolve to
-    # this package's declared floors: the test toolchain constrains the graph
-    # well above them (pestphp/pest-plugin-laravel requires laravel/framework
-    # ^11.45.2|^12.52.0|^13.0), and released versions blocked by security
-    # advisories are skipped entirely. This job reports what actually installs
-    # and flags the gap rather than claiming coverage it does not have.
+    # Deliberately NOT a floor job. --prefer-lowest does not reach this package's
+    # declared floors, because the dev toolchain constrains the graph above them
+    # (pestphp/pest-plugin-laravel requires laravel/framework
+    # ^11.45.2|^12.52.0|^13.0). The declared floors themselves are checked by the
+    # floor-smoke job below, which is what a consumer install actually looks like.
     name: lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}
     runs-on: ubuntu-latest
     strategy:
@@ -104,13 +127,27 @@ jobs:
       - name: Execute tests
         run: vendor/bin/pest --ci --no-coverage
 
-  dev-canary:
-    # Non-blocking. A failure here means the NEXT Laravel major is drifting away
-    # from this package, which is worth seeing early but must never be confused
-    # with released-version coverage or gate anything.
-    name: dev canary - laravel/framework dev-master
+  floor-smoke:
+    # The declared floors ARE reachable — just not with the dev toolchain
+    # installed. A consumer running `composer require tey/laravel-ddd --no-dev`
+    # resolves v11.44.0, v12.0.0 and v13.0.0 without complaint, so the floors are
+    # checked the way a consumer meets them and the dev dependencies are left out.
+    #
+    # Security advisories can still block a floor release. That is reported as a
+    # distinct outcome, because "blocked by an advisory today" is a different
+    # fact from "this package cannot work at its declared floor".
+    name: floor smoke - laravel/framework ${{ matrix.floor }}
     runs-on: ubuntu-latest
-    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - floor: '11.44.*'
+            php: '8.3'
+          - floor: '12.0.*'
+            php: '8.3'
+          - floor: '13.0.*'
+            php: '8.3'
 
     steps:
       - name: Checkout code
@@ -119,47 +156,159 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          # dev-master pulls symfony/console ^8.1, which requires php >= 8.4.1.
-          # 8.3 cannot resolve the canary at all.
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Build a consumer-shaped install at the declared floor
+        id: install
+        continue-on-error: true
+        # Built with the composer CLI rather than a heredoc so the workspace path
+        # is absolute and the step does not depend on the checkout directory name.
+        # Security advisories are left at their default (blocking): a floor that
+        # an advisory forbids is a real fact about what a consumer can install,
+        # and the following step reports it as its own outcome.
+        run: |
+          mkdir -p "${RUNNER_TEMP}/floor-consumer"
+          cd "${RUNNER_TEMP}/floor-consumer"
+          printf '{}' > composer.json
+          composer config name smoke/floor-consumer
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config repositories.package "{\"type\":\"path\",\"url\":\"${GITHUB_WORKSPACE}\",\"options\":{\"symlink\":false}}"
+          composer require "tey/laravel-ddd:*@dev" "laravel/framework:${{ matrix.floor }}" --no-interaction --no-update
+          composer update --no-dev --prefer-lowest --prefer-dist --no-interaction
+
+      - name: Classify a blocked floor
+        if: steps.install.outcome != 'success'
+        run: |
+          {
+            echo "### floor smoke - laravel/framework ${{ matrix.floor }}"
+            echo
+            echo "> **Floor not installable today.** The declared floor could not be installed for a consumer-shaped (\`--no-dev\`) project."
+            echo "> A security advisory covering every release of the floor range is the common cause and is NOT the same as the package being incompatible with its floor."
+            echo "> Check the install step log for the advisory identifiers before drawing a conclusion."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::laravel/framework ${{ matrix.floor }} could not be installed; the declared floor is unverifiable in this run"
+
+      - name: Verify the package loads against the floor
+        if: steps.install.outcome == 'success'
+        run: php .github/scripts/floor-smoke.php "${RUNNER_TEMP}/floor-consumer/vendor/autoload.php"
+
+      - name: Report floor result
+        if: steps.install.outcome == 'success'
+        run: |
+          cd "${RUNNER_TEMP}/floor-consumer"
+          bash "${GITHUB_WORKSPACE}/.github/scripts/report-resolved-versions.sh" "floor smoke - ${{ matrix.floor }}"
+
+  dev-canary:
+    # Non-blocking: a failure here means the NEXT Laravel major is drifting away
+    # from this package. Worth seeing early, never a gate.
+    #
+    # continue-on-error is set per step rather than on the job. A job-level
+    # continue-on-error still reports `needs.dev-canary.result` as 'success' to
+    # dependent jobs, which would hide a real failure behind a green summary
+    # row. Step outcomes are published as job outputs so the summary can state
+    # what actually happened.
+    name: dev canary - laravel/framework dev-master
+    runs-on: ubuntu-latest
+    outputs:
+      install: ${{ steps.install.outcome }}
+      tests: ${{ steps.tests.outcome }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          # dev-master pulls symfony/console ^8.1, which requires php >= 8.4.1,
+          # so the canary cannot resolve on 8.3.
           php-version: '8.4'
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
           coverage: none
 
       - name: Install dependencies
+        id: install
+        continue-on-error: true
         run: |
           composer require "laravel/framework:dev-master" --no-interaction --no-update
           composer update --prefer-dist --no-interaction
 
       - name: Report resolved versions
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
         run: bash .github/scripts/report-resolved-versions.sh "dev canary - dev-master"
 
       - name: Execute tests
+        id: tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
         run: vendor/bin/pest --ci --no-coverage
+
+      - name: Report canary outcome
+        run: |
+          install_outcome="${{ steps.install.outcome }}"
+          tests_outcome="${{ steps.tests.outcome }}"
+          {
+            echo "### dev canary - laravel/framework dev-master"
+            echo
+            echo "| Step | Outcome |"
+            echo "| --- | --- |"
+            echo "| install | ${install_outcome} |"
+            echo "| tests | ${tests_outcome:-skipped} |"
+            echo
+            echo "> Non-blocking. This tracks the next Laravel major and is not released-version coverage."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$install_outcome" != 'success' ]; then
+            echo "::warning::dev canary could not install laravel/framework dev-master"
+          elif [ "$tests_outcome" != 'success' ]; then
+            echo "::warning::dev canary tests FAILED against laravel/framework dev-master"
+          fi
 
   report:
     name: compatibility summary
     runs-on: ubuntu-latest
-    needs: [latest-stable, lowest-installable, dev-canary]
+    needs: [released, lowest-installable, floor-smoke, dev-canary]
     if: always()
 
     steps:
       - name: Summarize outcomes
         run: |
+          # dev-canary's job result is not a useful signal: its steps are
+          # continue-on-error, so the job succeeds regardless. Read the published
+          # step outcomes instead.
+          canary_install="${{ needs.dev-canary.outputs.install }}"
+          canary_tests="${{ needs.dev-canary.outputs.tests }}"
+
+          if [ "$canary_install" != 'success' ]; then
+            canary="install failed"
+          elif [ "$canary_tests" = 'success' ]; then
+            canary="passed"
+          else
+            canary="tests ${canary_tests:-did not run}"
+          fi
+
           {
             echo "## Compatibility run"
             echo
             echo "| Job | Result |"
             echo "| --- | --- |"
-            echo "| latest stable | ${{ needs.latest-stable.result }} |"
+            echo "| released | ${{ needs.released.result }} |"
             echo "| lowest installable | ${{ needs.lowest-installable.result }} |"
-            echo "| dev canary (non-blocking) | ${{ needs.dev-canary.result }} |"
+            echo "| floor smoke | ${{ needs.floor-smoke.result }} |"
+            echo "| dev canary (non-blocking) | ${canary} |"
             echo
             echo "Per-job resolved PHP / framework / Testbench versions are in each job's summary."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if released-version coverage regressed
         # The dev canary is excluded on purpose: it is allowed to be red.
-        if: needs.latest-stable.result != 'success' || needs.lowest-installable.result != 'success'
+        if: needs.released.result != 'success' || needs.lowest-installable.result != 'success' || needs.floor-smoke.result != 'success'
         run: |
           echo "::error::Compatibility testing against released Laravel versions failed. See the resolved-version report in the failing job."
           exit 1

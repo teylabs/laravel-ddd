@@ -8,8 +8,8 @@
 # Usage: report-resolved-versions.sh <job label> [declared framework floor]
 #
 # When a declared floor is supplied, the resolved framework version is compared
-# against it and the difference is reported. The comparison never fails the job:
-# it exists so the gap is visible, not to gate on it.
+# against it and the relationship is reported exactly: above, equal or below.
+# The comparison never fails the job; it exists so the gap is visible.
 #
 # Parsing is done with php rather than jq so this runs identically on the
 # Windows legs of the test matrix, where only php and composer are guaranteed.
@@ -21,12 +21,32 @@ declared_floor="${2:-}"
 
 packages="laravel/framework illuminate/contracts orchestra/testbench orchestra/testbench-core pestphp/pest pestphp/pest-plugin-laravel nesbot/carbon"
 
-installed_json="$(composer show --format=json --no-interaction 2>/dev/null || echo '{}')"
+# A failure here means the report is describing nothing. Say so loudly instead
+# of rendering an empty table that reads like a clean result.
+if ! installed_json="$(composer show --format=json --no-interaction 2>/dev/null)"; then
+  printf '::error::%s could not read composer show --format=json; no resolved versions were recorded\n' "$label"
+  {
+    echo "### ${label}"
+    echo
+    echo '> **Could not read the installed package list.** `composer show --format=json` failed, so nothing below is verified.'
+    echo
+  } >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+  exit 1
+fi
+
+if [ -z "$installed_json" ]; then
+  printf '::error::%s got an empty package list from composer show\n' "$label"
+  exit 1
+fi
 
 resolved_version() {
   printf '%s' "$installed_json" | php -r '
     $name = $argv[1];
     $data = json_decode(stream_get_contents(STDIN), true);
+    if (! is_array($data)) {
+        fwrite(STDERR, "unparseable composer show output\n");
+        exit(2);
+    }
     foreach ($data["installed"] ?? [] as $package) {
         if (($package["name"] ?? null) === $name) {
             echo $package["version"] ?? "";
@@ -51,7 +71,7 @@ fi
 
 # A dev branch is not a released version. The package sets minimum-stability:dev,
 # so a major whose releases are all blocked (for example by a security advisory)
-# silently resolves to its dev branch while the job label still reads "11.*".
+# can resolve to its dev branch while the job label still reads "11.*".
 case "$framework_version" in
   *dev*)
     add_note "Resolved laravel/framework ${framework_version} is a DEV BRANCH, not a released version. This job does not demonstrate released-version compatibility."
@@ -66,11 +86,17 @@ if [ -n "$declared_floor" ] && [ -n "$framework_version" ]; then
       ;;
     *)
       normalized="${framework_version#v}"
+
+      # Three distinct outcomes. Collapsing "below" into "matches" would report a
+      # constraint violation as floor coverage.
       if php -r 'exit(version_compare($argv[1], $argv[2], ">") ? 0 : 1);' "$normalized" "$declared_floor"; then
-        add_note "Declared floor ${declared_floor} was NOT exercised: the solver selected ${framework_version}, which is higher. Treat this job as lowest-installable coverage only."
+        add_note "Declared floor ${declared_floor} was NOT exercised: the solver selected ${framework_version}, which is ABOVE it. Treat this job as lowest-installable coverage only."
         printf '::notice::%s resolved laravel/framework %s, above the declared floor %s\n' "$label" "$framework_version" "$declared_floor"
+      elif php -r 'exit(version_compare($argv[1], $argv[2], "<") ? 0 : 1);' "$normalized" "$declared_floor"; then
+        add_note "Resolved ${framework_version} is BELOW the declared floor ${declared_floor}. The installed version does not satisfy what this package claims to require."
+        printf '::warning::%s resolved laravel/framework %s, BELOW the declared floor %s\n' "$label" "$framework_version" "$declared_floor"
       else
-        add_note "Resolved ${framework_version} matches the declared floor ${declared_floor}."
+        add_note "Resolved ${framework_version} is exactly the declared floor ${declared_floor}."
       fi
       ;;
   esac
