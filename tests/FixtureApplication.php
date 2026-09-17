@@ -124,9 +124,14 @@ final class FixtureApplication
             $_ENV[self::ENV_KEY] = $root;
             $_SERVER[self::ENV_KEY] = $root;
 
+            // Retained BEFORE the mappings are touched: pointLoaderAtFixtureRoot
+            // rewrites several prefixes in turn, and if it throws partway the
+            // catch below has to know which loader to put the earlier ones back
+            // on. Assigning afterwards would leave a half-redirected loader.
+            self::$loader = $loader;
+
             self::pointLoaderAtFixtureRoot($loader, $root);
 
-            self::$loader = $loader;
             self::$basePath = $root;
         } catch (Throwable $failure) {
             // Unwind whatever got as far as happening, so a failed setup cannot
@@ -207,8 +212,14 @@ final class FixtureApplication
      * needs are resolved by the re-pointed loader, and composerReload() writes
      * its own vendor there if a test wants one.
      *
-     * Symfony's Finder does not follow symlinks unless asked, and vendor is
-     * excluded explicitly so the intent survives anyone changing that.
+     * Symfony's Finder does not descend into symlinked directories unless it is
+     * asked to. It is deliberately NOT asked here: followLinks() takes no
+     * argument and unconditionally turns following ON, so `followLinks(false)`
+     * reads like a safety measure while doing the exact opposite.
+     *
+     * vendor is excluded by name as well, and symlinked files are skipped
+     * individually — Finder yields those, because isFile() resolves the link,
+     * and copying one would write the target's contents into the fixture root.
      */
     private static function copySkeleton(Filesystem $files, string $source, string $root): void
     {
@@ -217,12 +228,15 @@ final class FixtureApplication
             ->in($source)
             ->exclude('vendor')
             ->ignoreDotFiles(false)
-            ->ignoreVCS(false)
-            ->followLinks(false);
+            ->ignoreVCS(false);
 
         $copied = 0;
 
         foreach ($finder as $file) {
+            if (is_link($file->getPathname())) {
+                continue;
+            }
+
             $destination = $root.DIRECTORY_SEPARATOR.$file->getRelativePathname();
 
             $files->ensureDirectoryExists(dirname($destination));
