@@ -46,21 +46,44 @@ it('owns a fixture root that is unique to this process', function () {
 it('never writes fixtures into the installed Testbench skeleton', function () {
     $skeleton = FixtureApplication::skeletonPath();
 
-    // PREREQUISITE: this reads the installed package as it is on disk, so it
-    // assumes vendor/ is pristine. A checkout whose vendor was polluted by a
-    // suite run from before this isolation existed will fail here until
-    // `composer install` (or deleting vendor/orchestra/testbench-core and
-    // reinstalling) restores it. The failure is real — those files should not be
-    // in an installed dependency — but its cause may be historical rather than
-    // something the current change introduced.
+    // PREREQUISITE: this reads the installed package as it is on disk, so a
+    // checkout polluted by a suite run from before this isolation existed will
+    // fail here until vendor/orchestra/testbench-core is reinstalled. The
+    // failure is real — those files do not belong in an installed dependency —
+    // but the cause may be historical rather than the change under test.
     $remedy = ' — if this checkout predates harness isolation, reinstall vendor/orchestra/testbench-core to clear it';
 
     // setupTestApplication() copies src/, database/ and config/ddd.php into the
     // application root. If the root ever points back at the installed package,
     // these appear here.
     expect(is_dir($skeleton.'/src'))->toBeFalse('The installed Testbench skeleton has fixture sources copied into it'.$remedy)
-        ->and(is_dir($skeleton.'/vendor'))->toBeFalse('composer dump-autoload ran inside the installed Testbench skeleton'.$remedy)
         ->and(file_exists($skeleton.'/config/ddd.php'))->toBeFalse('A fixture config was written into the installed Testbench skeleton'.$remedy);
+
+    // vendor needs care, because two very different things can sit at that path.
+    //
+    // Testbench manages a symlink there itself — Foundation\Actions\
+    // CreateVendorSymlink and DeleteVendorSymlink point <skeleton>/vendor at the
+    // project's real vendor so its CLI can boot the skeleton app. That link is
+    // legitimate and may be present before this suite starts; is_dir() follows
+    // it, which is why an earlier version of this guard rejected it.
+    //
+    // A REAL directory at that path is the pollution being guarded against: it
+    // is what composer dump-autoload leaves when it runs with the skeleton as
+    // its working directory.
+    $vendor = $skeleton.DIRECTORY_SEPARATOR.'vendor';
+
+    if (is_link($vendor)) {
+        $target = readlink($vendor);
+
+        expect(realpath($target) ?: $target)->toBe(
+            realpath(dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'vendor'),
+            'The skeleton vendor symlink points somewhere other than this project\'s vendor directory'
+        );
+    } else {
+        expect(file_exists($vendor))->toBeFalse(
+            'composer dump-autoload ran inside the installed Testbench skeleton'.$remedy
+        );
+    }
 });
 
 it('does not copy the vendor symlink Testbench places in its skeleton', function () {
@@ -70,14 +93,20 @@ it('does not copy the vendor symlink Testbench places in its skeleton', function
     // repeats until the path is too long to open.
     //
     // The fixture root may legitimately have its own vendor/ — composerReload()
-    // runs composer dump-autoload there. What it must never have is the
-    // skeleton's symlink, or a copy of the project's dependencies.
+    // runs composer dump-autoload there, and Testbench may symlink one in via
+    // CreateVendorSymlink. What it must never contain is a COPY of the project's
+    // dependencies, which is what following the skeleton's symlink produces.
     $vendor = base_path('vendor');
 
-    expect(is_link($vendor))->toBeFalse('The skeleton copy brought over the vendor symlink')
-        ->and(is_dir($vendor.'/orchestra/testbench-core'))->toBeFalse(
-            'The skeleton copy followed the vendor symlink and copied the project dependencies in'
-        );
+    if (is_link($vendor)) {
+        // A link is Testbench's doing, not the copy's; copying a symlink would
+        // have produced a real file or directory here.
+        expect(realpath(readlink($vendor)))->toBe(realpath(dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'vendor'));
+    }
+
+    expect(is_dir($vendor.'/orchestra/testbench-core') && ! is_link($vendor))->toBeFalse(
+        'The skeleton copy followed the vendor symlink and copied the project dependencies into the fixture root'
+    );
 });
 
 it('scopes the fixture namespaces to the fixture root on the live loader', function () {
