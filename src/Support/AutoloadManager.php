@@ -259,7 +259,8 @@ class AutoloadManager
             ? DomainCache::get('domain-listeners')
             : $this->discoverListeners();
 
-        collect($cached['listeners'] ?? [])
+        // Normalize older manifests too: subscriber handlers belong to subscribe().
+        collect(DomainDiscovery::withoutSubscriberListeners($cached['listeners'] ?? [], $cached['subscribers'] ?? []))
             ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => static::$registeredListeners[$event][] = $listener
             )
             );

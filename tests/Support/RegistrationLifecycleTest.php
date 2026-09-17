@@ -109,12 +109,12 @@ it('keeps boot-time resolvers separate from deferred provider and event registra
     expect(app('registration.trace')->getArrayCopy())->toBe(['provider', 'subscribe', 'listener', 'subscriber']);
 });
 
-it('preserves repeated registration and inventory-only reboot semantics', function () {
+it('avoids repeated event registration and retains inventory-only reboot semantics', function () {
     $this->manager->run()->run();
     Event::dispatch('registration.event');
 
     expect(app('registration.trace')->getArrayCopy())->toBe([
-        'provider', 'subscribe', 'subscribe', 'listener', 'subscriber', 'listener', 'subscriber',
+        'provider', 'subscribe', 'listener', 'subscriber',
     ]);
 
     config(['ddd.autoload.listeners' => false, 'ddd.autoload.providers' => false]);
@@ -126,7 +126,7 @@ it('preserves repeated registration and inventory-only reboot semantics', functi
         ->and($this->manager->getRegisteredProviders())->toBe([])
         ->and($this->manager->hasRun())->toBeTrue()
         ->and($this->manager->isConsoleBooted())->toBeTrue()
-        ->and(app('registration.trace')->getArrayCopy())->toBe(['listener', 'subscriber', 'listener', 'subscriber']);
+        ->and(app('registration.trace')->getArrayCopy())->toBe(['listener', 'subscriber']);
 });
 
 it('registers one artisan callback per manager and reads the live command inventory', function () {

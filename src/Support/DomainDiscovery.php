@@ -82,8 +82,22 @@ class DomainDiscovery
             ->toArray();
 
         return [
-            'listeners' => $listeners,
+            'listeners' => static::withoutSubscriberListeners($listeners, $subscribers),
             'subscribers' => $subscribers,
         ];
+    }
+
+    public static function withoutSubscriberListeners(array $listeners, array $subscribers): array
+    {
+        return collect($listeners)->map(fn (array $eventListeners) => array_values(array_filter(
+            $eventListeners,
+            function ($listener) use ($subscribers) {
+                $class = is_array($listener)
+                    ? $listener[0]
+                    : (is_string($listener) ? Str::before($listener, '@') : null);
+
+                return ! in_array($class, $subscribers, true);
+            }
+        )))->filter()->all();
     }
 }
