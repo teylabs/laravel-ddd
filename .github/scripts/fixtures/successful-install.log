@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Lock file operations: 55 installs, 0 updates, 0 removals
+  - Locking laravel/framework (v11.44.0)
+  - Locking tey/laravel-ddd (dev-chore/framework-compatibility)
+Writing lock file
+Installing dependencies from lock file (including require-dev)
+Generating optimized autoload files
+55 packages you are using are looking for funding.

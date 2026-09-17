@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires laravel/framework 11.44.0 (exact version match: 11.44.0 or 11.44.0.0), found laravel/framework[v11.44.0] but these were not loaded, because they are affected by security advisories ("PKSA-m5cs-t1y6-qpcs"). Go to https://packagist.org/security-advisories/ to find advisory details.
+  Problem 2
+    - Root composer.json requires tey/laravel-ddd *@dev -> satisfiable by tey/laravel-ddd[dev-chore/framework-compatibility].
+    - tey/laravel-ddd dev-chore/framework-compatibility requires symfony/finder ^7.0|^8.0 -> found symfony/finder[v7.0.0, ..., 8.2.x-dev] but it conflicts with another require.

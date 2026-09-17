@@ -1,0 +1,4 @@
+> @php ./vendor/bin/testbench package:discover --ansi
+PHP Fatal error:  Declaration of Orchestra\Testbench\Console\Kernel::reportException(Throwable $e) must be compatible with Illuminate\Foundation\Console\Kernel::reportException(Throwable $e, array $context = []) in /home/runner/work/laravel-ddd/laravel-ddd/vendor/orchestra/testbench-core/src/Console/Kernel.php on line 29
+PHP Fatal error:  Declaration of Orchestra\Testbench\Exceptions\Handler::report(Throwable $e) must be compatible with Illuminate\Foundation\Exceptions\Handler::report(Throwable $e, array $context = []) in /home/runner/work/laravel-ddd/laravel-ddd/vendor/orchestra/testbench-core/src/Exceptions/Handler.php on line 15
+Script @php ./vendor/bin/testbench package:discover --ansi handling the post-autoload-dump event returned with error code 255

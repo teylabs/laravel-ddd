@@ -1,0 +1,8 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires laravel/framework dev-master -> satisfiable by laravel/framework[dev-master].
+    - laravel/framework[dev-master, 13.0.x-dev] require symfony/console ^8.1.0 -> satisfiable by symfony/console[v8.1.0-BETA1, ..., 8.2.x-dev].
+    - symfony/console[v8.1.0-BETA1, ..., 8.2.x-dev] require php >=8.4.1 -> your php version (8.3.28) does not satisfy that requirement.
