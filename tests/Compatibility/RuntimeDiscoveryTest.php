@@ -24,11 +24,19 @@ uses(BootsTestApplication::class);
 beforeEach(function () {
     $this->setupTestApplication();
 
+    // These tests install sentinel callbacks into process-global framework
+    // state. Capture whatever was there first so the sentinels cannot leak into
+    // any test that runs afterwards — including the rest of this file, which
+    // runs in a random order.
+    $this->originalGuessClassNamesCallback = DiscoverEvents::$guessClassNamesUsingCallback;
+
     DomainCache::clear();
     Artisan::call('ddd:clear');
 });
 
 afterEach(function () {
+    DiscoverEvents::$guessClassNamesUsingCallback = $this->originalGuessClassNamesCallback;
+
     DomainCache::clear();
     Artisan::call('ddd:clear');
 });

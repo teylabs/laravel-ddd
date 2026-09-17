@@ -33,10 +33,26 @@ beforeEach(function () {
 });
 
 /**
- * Every PHP file under the given base-relative directories, keyed by path.
+ * Normalize a path to forward slashes.
+ *
+ * Both sides of the comparison below have to be normalized BEFORE sorting, not
+ * after. '/' (0x2F) and '\' (0x5C) sort differently, so a list containing
+ * native-separator paths and a list containing slash paths can come out of
+ * sort() in different orders on Windows even when they hold the same entries.
+ */
+function normalizePath(string $path): string
+{
+    return str_replace('\\', '/', $path);
+}
+
+/**
+ * Every PHP file under the given base-relative directories, as base-relative
+ * forward-slash paths, sorted.
  */
 function phpFilesWithin(array $directories): array
 {
+    $base = normalizePath(base_path()).'/';
+
     $files = [];
 
     foreach ($directories as $directory) {
@@ -48,14 +64,14 @@ function phpFilesWithin(array $directories): array
 
         foreach (File::allFiles($path) as $file) {
             if ($file->getExtension() === 'php') {
-                $files[str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname())] = true;
+                $files[] = str_replace($base, '', normalizePath($file->getPathname()));
             }
         }
     }
 
-    ksort($files);
+    sort($files);
 
-    return array_keys($files);
+    return $files;
 }
 
 function assertParses(string $relativePath): void
@@ -67,6 +83,42 @@ function assertParses(string $relativePath): void
         "[{$relativePath}] is not valid PHP: ".trim($process->getOutput().$process->getErrorOutput())
     );
 }
+
+it('orders Windows-shaped and posix-shaped paths identically once normalized', function () {
+    // The regression this guards is ordering, not formatting. Before
+    // normalization these two lists hold the same entries but sort differently,
+    // because '\' (0x5C) sorts after '/' (0x2F) — so a Windows runner would see
+    // a spurious mismatch in the exact-equality assertion below.
+    // A file sitting next to a directory of the same prefix is the case that
+    // actually collides: after "src/Domain", '/' (0x2F) sorts before 'M'
+    // (0x4D) but '\' (0x5C) sorts after it, so the two orderings disagree.
+    $windows = [
+        'src\\Domain\\Invoicing\\Models\\Ledger.php',
+        'src\\DomainModel.php',
+    ];
+
+    $posix = [
+        'src/Domain/Invoicing/Models/Ledger.php',
+        'src/DomainModel.php',
+    ];
+
+    $normalizedWindows = array_map('normalizePath', $windows);
+    $normalizedPosix = array_map('normalizePath', $posix);
+
+    sort($normalizedWindows);
+    sort($normalizedPosix);
+
+    expect($normalizedWindows)->toBe($normalizedPosix);
+
+    // And the naive version really would have differed, so this is not a
+    // tautology: sorting the raw separator-mixed lists disagrees.
+    $rawWindows = $windows;
+    $rawPosix = $posix;
+    sort($rawWindows);
+    sort($rawPosix);
+
+    expect(array_map('normalizePath', $rawWindows))->not->toBe(array_map('normalizePath', $rawPosix));
+});
 
 it('generates every related object into the domain and nothing outside it', function () {
     // A model plus its whole forwarded family in one run. ForwardsToDomainCommands
@@ -107,13 +159,11 @@ it('generates every related object into the domain and nothing outside it', func
 
     // Exact equality, not "contains": a stray app/Models/Ledger.php or
     // database/factories/LedgerFactory.php is precisely the regression this
-    // guards, and a containment assertion would not see it.
-    expect($created)->toBe(array_map(
-        fn (string $path) => str_replace('/', DIRECTORY_SEPARATOR, $path),
-        $expected,
-    ));
+    // guards, and a containment assertion would not see it. Both lists are
+    // already forward-slash normalized, so the ordering matches on every OS.
+    expect($created)->toBe($expected);
 
-    expect($migration)->toStartWith(str_replace('/', DIRECTORY_SEPARATOR, 'src/Domain/Invoicing/Database/Migrations/'));
+    expect($migration)->toStartWith('src/Domain/Invoicing/Database/Migrations/');
 });
 
 it('links the generated model, factory and policy to each other', function () {

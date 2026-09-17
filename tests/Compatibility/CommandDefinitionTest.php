@@ -15,7 +15,19 @@ use Symfony\Component\Console\Command\Command as SymfonyCommand;
 // the moment upstream adds one), this derives the expectation from the framework
 // command the ddd generator extends, as it is registered in this application.
 // Upstream adds an option, the ddd generator inherits it, the test keeps passing.
-// Upstream changes one out from under the package and the test fails.
+//
+// What this DOES detect: the package's adapter diverging from the framework
+// command it inherits from — an option that stops being inherited, a mode or
+// default that the adapter overrides, a re-declared definition (ddd:migration)
+// falling behind upstream.
+//
+// What this does NOT detect, and must not be described as detecting: a change
+// upstream makes to BOTH sides at once. If the framework renames an option, the
+// native command and the inheriting adapter move together and the comparison
+// still passes. Guarding against that would require pinning expected values per
+// framework version, which is exactly the stale hand-written list this avoids.
+// That class of change is what the scheduled compatibility workflow and the
+// behavioural tests in this directory are for.
 
 /**
  * The closest framework ancestor of a package command, or null when the command
@@ -127,6 +139,16 @@ it('inherits each framework option and argument without altering its contract', 
                     );
                 }
             }
+
+            if ($inherited->getDefault() !== $argument->getDefault()) {
+                $divergences[] = sprintf(
+                    '%s argument %s: default=%s, %s=%s',
+                    $name, $argumentName,
+                    var_export($inherited->getDefault(), true),
+                    $nativeName,
+                    var_export($argument->getDefault(), true),
+                );
+            }
         }
 
         foreach ($nativeDefinition->getOptions() as $option) {
@@ -144,6 +166,9 @@ it('inherits each framework option and argument without altering its contract', 
                 'valueRequired' => 'isValueRequired',
                 'valueOptional' => 'isValueOptional',
                 'array' => 'isArray',
+                // A negatable option silently loses its --no-* form if the
+                // adapter re-declares it without the flag.
+                'negatable' => 'isNegatable',
             ];
 
             foreach ($accessors as $label => $accessor) {
