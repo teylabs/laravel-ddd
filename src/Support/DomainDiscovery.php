@@ -39,17 +39,24 @@ class DomainDiscovery
 
     public function listeners(array $paths, string $basePath): array
     {
+        // DiscoverEvents::$guessClassNamesUsingCallback is process-global framework
+        // state a consumer may also have set. Borrow it for the scan and hand back
+        // whatever was there before, rather than clearing someone else's callback.
+        $previousCallback = DiscoverEvents::$guessClassNamesUsingCallback;
+
         DiscoverEvents::guessClassNamesUsing(
             fn (SplFileInfo $file, string $base) => Lody::resolveClassname($file)
         );
 
-        $discoveredEvents = rescue(
-            fn () => DiscoverEvents::within($paths, $basePath),
-            [],
-            false
-        );
-
-        DiscoverEvents::$guessClassNamesUsingCallback = null;
+        try {
+            $discoveredEvents = rescue(
+                fn () => DiscoverEvents::within($paths, $basePath),
+                [],
+                false
+            );
+        } finally {
+            DiscoverEvents::$guessClassNamesUsingCallback = $previousCallback;
+        }
 
         $listeners = [];
         $subscriberCandidates = [];
