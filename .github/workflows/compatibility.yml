@@ -12,6 +12,16 @@ on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  # workflow_dispatch only becomes available once the workflow is on the default
+  # branch, so a schedule/manual-only workflow cannot be exercised before it is
+  # merged. This path filter makes the workflow run on pull requests that touch
+  # the workflow itself or the scripts it calls, and nothing else — ordinary
+  # code pull requests are unaffected and keep using run-tests.yml alone.
+  pull_request:
+    paths:
+      - '.github/workflows/compatibility.yml'
+      - '.github/scripts/report-resolved-versions.sh'
+      - '.github/scripts/floor-smoke.php'
 
 permissions:
   contents: read
@@ -128,25 +138,29 @@ jobs:
         run: vendor/bin/pest --ci --no-coverage
 
   floor-smoke:
-    # The declared floors ARE reachable — just not with the dev toolchain
-    # installed. A consumer running `composer require tey/laravel-ddd --no-dev`
-    # resolves v11.44.0, v12.0.0 and v13.0.0 without complaint, so the floors are
-    # checked the way a consumer meets them and the dev dependencies are left out.
+    # The declared floors are checked the way a consumer meets them: with
+    # --no-dev, so the dev toolchain (which cannot install them) is out of the
+    # picture.
     #
-    # Security advisories can still block a floor release. That is reported as a
-    # distinct outcome, because "blocked by an advisory today" is a different
-    # fact from "this package cannot work at its declared floor".
+    # The version is pinned to an EXACT release, not a patch wildcard. A range
+    # like 11.44.* can resolve a later patch, and with minimum-stability:dev it
+    # can resolve a branch alias — either of which would let this job report
+    # success under the declared floor's name while testing something else. The
+    # smoke script re-checks the installed version before it does anything.
+    #
+    # This job is expected to go red while a floor release is uninstallable. That
+    # is a real coverage gap and it is meant to be visible, not smoothed over.
     name: floor smoke - laravel/framework ${{ matrix.floor }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - floor: '11.44.*'
+          - floor: '11.44.0'
             php: '8.3'
-          - floor: '12.0.*'
+          - floor: '12.0.0'
             php: '8.3'
-          - floor: '13.0.*'
+          - floor: '13.0.0'
             php: '8.3'
 
     steps:
@@ -165,9 +179,14 @@ jobs:
         continue-on-error: true
         # Built with the composer CLI rather than a heredoc so the workspace path
         # is absolute and the step does not depend on the checkout directory name.
-        # Security advisories are left at their default (blocking): a floor that
-        # an advisory forbids is a real fact about what a consumer can install,
-        # and the following step reports it as its own outcome.
+        #
+        # minimum-stability:dev is required for the path repository (the package
+        # itself only has a dev-<branch> version there). It does NOT loosen the
+        # framework, which is pinned to an exact release below.
+        #
+        # Security policy is left at its defaults. Disabling advisory blocking to
+        # make this job green would be reporting a floor that a consumer cannot
+        # actually install.
         run: |
           mkdir -p "${RUNNER_TEMP}/floor-consumer"
           cd "${RUNNER_TEMP}/floor-consumer"
@@ -177,24 +196,31 @@ jobs:
           composer config prefer-stable true
           composer config repositories.package "{\"type\":\"path\",\"url\":\"${GITHUB_WORKSPACE}\",\"options\":{\"symlink\":false}}"
           composer require "tey/laravel-ddd:*@dev" "laravel/framework:${{ matrix.floor }}" --no-interaction --no-update
-          composer update --no-dev --prefer-lowest --prefer-dist --no-interaction
+          composer update --no-dev --prefer-dist --no-interaction
 
-      - name: Classify a blocked floor
+      - name: Report an unavailable floor and fail
         if: steps.install.outcome != 'success'
+        # Deliberately states no cause. A security advisory is one possibility,
+        # but so are a solver conflict, a packagist outage and a mistake in this
+        # workflow — and asserting the wrong one teaches people to dismiss the
+        # job. The install log has the actual composer error.
         run: |
           {
             echo "### floor smoke - laravel/framework ${{ matrix.floor }}"
             echo
-            echo "> **Floor not installable today.** The declared floor could not be installed for a consumer-shaped (\`--no-dev\`) project."
-            echo "> A security advisory covering every release of the floor range is the common cause and is NOT the same as the package being incompatible with its floor."
-            echo "> Check the install step log for the advisory identifiers before drawing a conclusion."
+            echo "> **Floor not verified.** \`laravel/framework:${{ matrix.floor }}\` could not be installed for a consumer-shaped (\`--no-dev\`) project, so nothing was smoked against the declared floor."
+            echo "> The cause is whatever the install step reported — read it before concluding anything. A release blocked by a security advisory, a solver conflict and a transient network failure all land here."
+            echo "> This is a coverage gap, not evidence either way about whether the package works at its floor."
             echo
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning::laravel/framework ${{ matrix.floor }} could not be installed; the declared floor is unverifiable in this run"
+          echo "::error::laravel/framework ${{ matrix.floor }} could not be installed; the declared floor was not verified in this run"
+          exit 1
 
       - name: Verify the package loads against the floor
         if: steps.install.outcome == 'success'
-        run: php .github/scripts/floor-smoke.php "${RUNNER_TEMP}/floor-consumer/vendor/autoload.php"
+        # The expected version is passed so the script can refuse to smoke
+        # anything that is not the exact declared floor.
+        run: php .github/scripts/floor-smoke.php "${RUNNER_TEMP}/floor-consumer/vendor/autoload.php" "${{ matrix.floor }}"
 
       - name: Report floor result
         if: steps.install.outcome == 'success'
