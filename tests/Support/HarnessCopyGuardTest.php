@@ -26,6 +26,29 @@ function copySkeletonUnderTest(Filesystem $files, string $source, string $destin
     $method->invoke(null, $files, $source, $destination);
 }
 
+/**
+ * Remove a symlink without following it.
+ *
+ * Windows distinguishes the two kinds: a directory symlink has to go through
+ * rmdir(), and unlink() on one fails with "unlink(...): Is a directory". POSIX
+ * removes both with unlink() and rejects rmdir() on a symlink — so the branch is
+ * on the platform, not only on what the link points at.
+ */
+function removeSymlink(string $path): void
+{
+    if (! is_link($path)) {
+        return;
+    }
+
+    if (DIRECTORY_SEPARATOR === '\\' && is_dir($path)) {
+        rmdir($path);
+
+        return;
+    }
+
+    unlink($path);
+}
+
 it('copies a skeleton without following any symlink out of it', function () {
     $files = new Filesystem;
 
@@ -51,7 +74,7 @@ it('copies a skeleton without following any symlink out of it', function () {
         // Windows without developer mode cannot create symlinks. Skipping is
         // honest here: the risk this guards does not arise without them.
         foreach (['/vendor', '/linked-directory', '/app/LinkedFile.php'] as $link) {
-            is_link($skeleton.$link) && unlink($skeleton.$link);
+            removeSymlink($skeleton.$link);
         }
 
         $files->deleteDirectory($base);
@@ -79,7 +102,7 @@ it('copies a skeleton without following any symlink out of it', function () {
         // Unlink first: deleting through a symlinked directory would follow it
         // and take the target's contents with it.
         foreach (['/vendor', '/linked-directory', '/app/LinkedFile.php'] as $link) {
-            is_link($skeleton.$link) && unlink($skeleton.$link);
+            removeSymlink($skeleton.$link);
         }
 
         $files->deleteDirectory($base);
