@@ -354,7 +354,7 @@ class AutoloadManager
             return ['listeners' => [], 'subscribers' => []];
         }
 
-        return (new DomainDiscovery)->listeners($paths, $this->app->basePath());
+        return (new DomainDiscovery)->listeners($paths, $this->app->basePath(), $this->finder($paths));
     }
 
     public function cacheCommands()

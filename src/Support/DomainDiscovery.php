@@ -37,7 +37,17 @@ class DomainDiscovery
             ->toArray();
     }
 
-    public function listeners(array $paths, string $basePath): array
+    /**
+     * Discover listeners and subscribers under the given paths.
+     *
+     * The framework's DiscoverEvents::within() scans the paths with a Finder of
+     * its own and offers no hook to narrow it, so the caller's finder cannot be
+     * handed down. It is applied to the result instead: whatever the finder
+     * admits is the set allowed to register, which is how ddd.autoload_ignore,
+     * a custom autoload filter and a subclassed finder reach listener discovery
+     * at all. Passing no finder keeps the unfiltered behaviour.
+     */
+    public function listeners(array $paths, string $basePath, ?Finder $finder = null): array
     {
         // DiscoverEvents::$guessClassNamesUsingCallback is process-global framework
         // state a consumer may also have set. Borrow it for the scan and hand back
@@ -56,6 +66,10 @@ class DomainDiscovery
             );
         } finally {
             DiscoverEvents::$guessClassNamesUsingCallback = $previousCallback;
+        }
+
+        if ($finder !== null) {
+            $discoveredEvents = $this->onlyAllowedListeners($discoveredEvents, $finder);
         }
 
         $listeners = [];
@@ -92,6 +106,30 @@ class DomainDiscovery
             'listeners' => static::withoutSubscriberListeners($listeners, $subscribers),
             'subscribers' => $subscribers,
         ];
+    }
+
+    /**
+     * Drop discovered handlers whose class the finder did not admit.
+     *
+     * Subscribers need no separate pass: they are derived from this same set, so
+     * a class filtered out here can never become a subscriber either.
+     */
+    protected function onlyAllowedListeners(array $discoveredEvents, Finder $finder): array
+    {
+        // Resolved with the same callback the scan itself uses, so the names
+        // being compared are produced identically on both sides.
+        $allowed = collect(iterator_to_array($finder, false))
+            ->map(fn (SplFileInfo $file) => Lody::resolveClassname($file))
+            ->filter()
+            ->flip();
+
+        return collect($discoveredEvents)
+            ->map(fn (array $eventListeners) => array_values(array_filter(
+                $eventListeners,
+                fn (string $listenerMethod) => $allowed->has(Str::before($listenerMethod, '@')),
+            )))
+            ->filter()
+            ->all();
     }
 
     public static function withoutSubscriberListeners(array $listeners, array $subscribers): array
