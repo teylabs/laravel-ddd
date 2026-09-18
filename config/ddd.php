@@ -142,8 +142,8 @@ return [
     | Autoloading
     |--------------------------------------------------------------------------
     |
-    | Configure whether domain providers, commands, policies, factories,
-    | and migrations should be auto-discovered and registered.
+    | Configure discovery and registration of providers, commands, migrations,
+    | and event listeners, and policy and factory naming resolution.
     |
     */
     'autoload' => [
