@@ -32,8 +32,9 @@ function setConfigValues(array $values)
  * Assert that a generated file is valid PHP.
  *
  * Shared because more than one suite needs it: a generator can write a file that
- * exists, contains the right words and still does not parse — a malformed import
- * is exactly that failure — and `php -l` is the only check that catches it.
+ * exists and contains the right words yet still does not parse — a malformed
+ * import is exactly that failure, and assertions on file contents do not notice
+ * it.
  */
 function assertParses(string $relativePath): void
 {

@@ -29,10 +29,15 @@ class DomainControllerMakeCommand extends ControllerMakeCommand
             );
 
             // Resolved after generation, from the name each request was actually
-            // forwarded under, so the import and the file cannot disagree.
-            // Building these from the controller's own name put the controller's
-            // class name into the namespace, and for a nested controller left a
-            // raw '/' inside a use statement.
+            // forwarded under, so both sides derive the location from one rule
+            // instead of computing it twice. Building these from the
+            // controller's own name put the controller's class name into the
+            // namespace, and for a nested controller left a raw '/' inside a use
+            // statement.
+            //
+            // This resolves the conventional location for the forwarded name. A
+            // schema callback that relocates the child request is not reflected
+            // here; see RelatedObjectsCompatibilityTest for that limitation.
             //
             // The fully qualified name is what carries a nested folder: an
             // object's ->namespace is the layer's, so Requests\Billing\Store...
