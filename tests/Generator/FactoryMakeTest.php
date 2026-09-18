@@ -53,4 +53,20 @@ it('can generate domain factories', function ($domainPath, $domainRoot, $domain,
         ->toContain("protected \$model = {$modelName}::class;");
 })->with('domainPaths')->with('domainSubdomain');
 
-it('normalizes factory classes with Factory suffix')->markTestIncomplete();
+it('normalises factory names without duplicating the suffix', function ($input, $relativeName, $class, $namespace) {
+    Config::set('ddd.domain_path', 'src/Domain');
+    Config::set('ddd.domain_namespace', 'Domain');
+    Config::set('ddd.namespaces.factory', 'Database\\Factories');
+
+    expect(Artisan::call('ddd:factory', ['name' => 'Invoicing:'.$input]))->toBe(0);
+
+    $path = base_path('src/Domain/Invoicing/Database/Factories/'.$relativeName.'.php');
+    expect(is_file($path))->toBeTrue();
+    expect(file_get_contents($path))
+        ->toContain('namespace '.$namespace.';')
+        ->toContain('class '.$class.' extends Factory')
+        ->not->toContain('FactoryFactory');
+})->with([
+    'adds suffix' => ['Ledger', 'LedgerFactory', 'LedgerFactory', 'Domain\\Invoicing\\Database\\Factories'],
+    'retains suffix' => ['LedgerFactory', 'LedgerFactory', 'LedgerFactory', 'Domain\\Invoicing\\Database\\Factories'],
+]);
