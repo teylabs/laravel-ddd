@@ -143,6 +143,17 @@ class GeneratorBlueprint
         return $this->domain->factory($name);
     }
 
+    public function getRequestFor(string $name)
+    {
+        // An absolute name is one the child generator would treat as absolute,
+        // and it decides that from the name it is given — so the same rule is
+        // applied to the name being forwarded here. Dropping the flag put the
+        // request's type namespace back in (Requests\Custom\StoreInvoiceRequest)
+        // while the generated file sat at the layer root under Custom, so the
+        // controller imported a class nothing had written.
+        return $this->domain->object('request', $name, str($name)->startsWith('/'));
+    }
+
     public function getMigrationPath()
     {
         return $this->domain->migrationPath;

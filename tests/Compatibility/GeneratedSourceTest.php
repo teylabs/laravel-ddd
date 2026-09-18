@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
-use Symfony\Component\Process\Process;
 use Tey\LaravelDDD\Models\DomainModel;
 
 // Framework compatibility contract for generated source (audit F19 #2, #3, #6).
@@ -72,16 +71,6 @@ function phpFilesWithin(array $directories): array
     sort($files);
 
     return $files;
-}
-
-function assertParses(string $relativePath): void
-{
-    $process = new Process([PHP_BINARY, '-l', base_path($relativePath)]);
-    $process->run();
-
-    expect($process->isSuccessful())->toBeTrue(
-        "[{$relativePath}] is not valid PHP: ".trim($process->getOutput().$process->getErrorOutput())
-    );
 }
 
 it('orders Windows-shaped and posix-shaped paths identically once normalized', function () {
