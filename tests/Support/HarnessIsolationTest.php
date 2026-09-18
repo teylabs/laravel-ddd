@@ -110,22 +110,31 @@ it('does not copy the vendor symlink Testbench places in its skeleton', function
 });
 
 it('scopes the fixture namespaces to the fixture root on the live loader', function () {
-    $autoloader = collect(spl_autoload_functions() ?: [])
-        ->first(fn ($candidate) => is_array($candidate) && ($candidate[0] ?? null) instanceof ClassLoader);
+    $decoy = new ClassLoader;
+    $decoy->register(true);
 
-    expect($autoloader)->not->toBeNull();
+    try {
+        $autoloader = collect(spl_autoload_functions() ?: [])
+            ->first(fn ($candidate) => is_array($candidate)
+                && ($candidate[0] ?? null) instanceof ClassLoader
+                && array_key_exists('Tey\\LaravelDDD\\', $candidate[0]->getPrefixesPsr4()));
 
-    $prefixes = $autoloader[0]->getPrefixesPsr4();
+        expect($autoloader)->not->toBeNull();
 
-    // Compared raw rather than resolved: the mapped directories need not exist
-    // yet, and the loader was configured from this exact string.
-    $root = FixtureApplication::basePath();
+        $prefixes = $autoloader[0]->getPrefixesPsr4();
 
-    // These are mapped to the installed skeleton by the package's composer.json.
-    // They are re-pointed at runtime so that metadata never has to be rewritten.
-    foreach (['Domain\\', 'Application\\', 'Infrastructure\\', 'App\\'] as $prefix) {
-        expect($prefixes)->toHaveKey($prefix);
-        expect($prefixes[$prefix][0])->toStartWith($root);
+        // Compared raw rather than resolved: the mapped directories need not exist
+        // yet, and the loader was configured from this exact string.
+        $root = FixtureApplication::basePath();
+
+        // These are mapped to the installed skeleton by the package's composer.json.
+        // They are re-pointed at runtime so that metadata never has to be rewritten.
+        foreach (['Domain\\', 'Application\\', 'Infrastructure\\', 'App\\'] as $prefix) {
+            expect($prefixes)->toHaveKey($prefix);
+            expect($prefixes[$prefix][0])->toStartWith($root);
+        }
+    } finally {
+        $decoy->unregister();
     }
 });
 
