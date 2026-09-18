@@ -723,7 +723,11 @@ it('refuses a symlink whose target does not exist, and leaves the link alone', f
     expect(fn () => $config->save())->toThrow(RuntimeException::class, 'symbolic link');
 
     expect(is_link($link))->toBeTrue('the link was removed')
-        ->and(readlink($link))->toBe($missing)
+        // toEqualPath, not toBe: readlink() hands back a fully normalized path,
+        // so on Windows the separators differ from the ones written here. The
+        // expected side is normalized and nothing else, as everywhere else in
+        // this suite — the link must still point at exactly that target.
+        ->and(readlink($link))->toEqualPath($missing)
         ->and(file_exists($missing))->toBeFalse()
         ->and(strayFilesBeside($link))->toBe([]);
 
