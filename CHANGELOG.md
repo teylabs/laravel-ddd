@@ -8,6 +8,7 @@ All notable changes to `laravel-ddd` will be documented in this file.
 - Laravel Boost guideline and `laravel-ddd-development` skill, with opt-in installation instructions for AI-assisted development that respects your configured domains, layers and generators.
 
 ### Fixed
+- Correct the declared namespace of factories generated in nested folders.
 - Recover stale discovery manifests when cached provider, command, listener or subscriber classes disappear, or listener/subscriber methods are removed. Rediscover the affected category in memory so renamed replacements can register without requiring Artisan to boot successfully first.
 - Detect deleted files in optimized Composer classmaps before attempting to load cached classes. Recovery does not rewrite cache files or suppress errors inside existing classes.
 - Prevent repeated package registration calls from adding further copies of listeners and subscribers. Existing overlap between discovered handlers and explicit subscriber registrations is preserved.

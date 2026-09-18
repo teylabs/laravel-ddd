@@ -22,7 +22,8 @@ class DomainFactoryMakeCommand extends FactoryMakeCommand
 
     protected function getNamespace($name)
     {
-        return $this->blueprint->getNamespaceFor('factory');
+        return str($this->blueprint->getFactoryFor($this->getNameInput())->fullyQualifiedName)
+            ->beforeLast('\\')->toString();
     }
 
     protected function preparePlaceholders(): array
