@@ -26,24 +26,20 @@ class ConfigManager
         $this->stub = file_get_contents(DDD::packagePath('config/ddd.php.stub'));
     }
 
-    protected function mergeArray($path, $array)
-    {
-        $path = Arr::wrap($path);
-
-        $merged = [];
-
-        foreach ($array as $key => $value) {
-            $merged[$key] = is_array($value)
-                ? $this->mergeArray([...$path, $key], $value)
-                : $this->resolve([...$path, $key], $value);
-        }
-
-        if (array_is_list($merged)) {
-            $merged = array_unique($merged);
-        }
-
-        return $merged;
-    }
+    /**
+     * Top-level keys whose value is a collection the consumer owns outright.
+     *
+     * Most maps in this config have a key set the package defines — autoload and
+     * namespaces list every option the package supports, so a new one has to
+     * appear on sync. `layers` is different: the documentation describes it as
+     * "additional top-level namespaces and paths", the entries are the
+     * consumer's own, and Infrastructure ships as an example rather than as a
+     * key the package owns. Merging defaults into it would put back a layer the
+     * consumer had deleted.
+     */
+    protected const CONSUMER_OWNED_KEYS = [
+        'layers',
+    ];
 
     public function resolve($path, $value)
     {
@@ -52,19 +48,65 @@ class ConfigManager
         return data_get($this->config, $path, $value);
     }
 
-    public function syncWithLatest()
+    /**
+     * Add anything new from the package without disturbing what is already there.
+     *
+     * The merge walks the CONSUMER's config and fills in default keys it does not
+     * have. Walking the package's config instead — as this used to — silently
+     * dropped every consumer key the package did not also define, so a custom
+     * layer or an unrecognised top-level key disappeared on sync.
+     */
+    protected function mergeWithDefaults(array $config, array $defaults, array $path = []): array
     {
-        $fresh = [];
+        $merged = $config;
 
-        foreach ($this->packageConfig as $key => $value) {
-            $resolved = is_array($value)
-                ? $this->mergeArray($key, $value)
-                : $this->resolve($key, $value);
+        foreach ($defaults as $key => $default) {
+            if (! array_key_exists($key, $config)) {
+                $merged[$key] = $default;
 
-            $fresh[$key] = $resolved;
+                continue;
+            }
+
+            $value = $config[$key];
+
+            if ($this->isConsumerOwned([...$path, $key], $value, $default)) {
+                continue;
+            }
+
+            $merged[$key] = $this->mergeWithDefaults($value, $default, [...$path, $key]);
         }
 
-        $this->config = $fresh;
+        return $merged;
+    }
+
+    /**
+     * Whether a value the consumer supplied should be kept exactly as it is.
+     *
+     * A list is theirs entirely, empty included: the entries carry no identity of
+     * their own, so filling gaps from the package could only mean merging by
+     * numeric position. That is how removing an entry from application_objects
+     * used to reinstate whichever default happened to sit at that index, and how
+     * emptying autoload_ignore used to hand the defaults straight back.
+     *
+     * Anything that is not an array on both sides is kept as given too, so an
+     * explicit null or false survives.
+     */
+    protected function isConsumerOwned(array $path, mixed $value, mixed $default): bool
+    {
+        if (! is_array($value) || ! is_array($default)) {
+            return true;
+        }
+
+        if (array_is_list($value) || array_is_list($default)) {
+            return true;
+        }
+
+        return in_array(implode('.', $path), static::CONSUMER_OWNED_KEYS, true);
+    }
+
+    public function syncWithLatest()
+    {
+        $this->config = $this->mergeWithDefaults($this->config, $this->packageConfig);
 
         return $this;
     }
