@@ -1,0 +1,5 @@
+Loading composer repositories with package information
+Updating dependencies
+[Composer\Downloader\TransportException]
+The "https://repo.packagist.org/p2/laravel/framework.json" file could not be downloaded: Failed to open stream: Connection timed out
+Retrying with degraded mode, check https://getcomposer.org/doc/articles/troubleshooting.md#degraded-mode for more info

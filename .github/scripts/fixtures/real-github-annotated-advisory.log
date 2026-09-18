@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires laravel/framework 11.44.0 (exact version match: 11.44.0 or 11.44.0.0), found laravel/framework[v11.44.0] but these were not loaded, because they are affected by security advisories ("PKSA-m5cs-t1y6-qpcs", "PKSA-3r5d-mb8f-1qw9"). Go to https://packagist.org/security-advisories/ to find advisory details.
+
+Running update with --no-dev does not mean require-dev is ignored, it just means the packages will not be installed. If dev requirements are blocking the update you have to resolve those problems.
+::error ::Your requirements could not be resolved to an installable set of packages.%0A%0A  Problem 1%0A    - Root composer.json requires laravel/framework 11.44.0 (exact version match: 11.44.0 or 11.44.0.0), found laravel/framework[v11.44.0] but these were not loaded, because they are affected by security advisories ("PKSA-m5cs-t1y6-qpcs", "PKSA-3r5d-mb8f-1qw9"). Go to https://packagist.org/security-advisories/ to find advisory details.%0A

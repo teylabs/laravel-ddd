@@ -1,0 +1,462 @@
+name: compatibility
+
+# Fresh dependency resolution on a schedule, because run-tests.yml only fires on
+# pushes to main and on pull requests: a Laravel release while this repository is
+# quiet never triggers a new resolution on its own.
+#
+# Every job resolves from scratch (no lock file is committed) and reports the
+# versions it actually ended up with. The matrix label is not evidence of what
+# installed — see the "report resolved versions" step in each job.
+#
+# Coverage policy: when composer's default advisory policy blocks every release
+# a job could resolve, CI has nothing to test against. That is a gap in what CI
+# can cover, not a defect in this package, so those runs are recorded as
+# COVERAGE UNAVAILABLE and do not block — they are never reported as passed or
+# tested. Real test failures, and any install failure that is not positively
+# identified as an advisory block, still fail the run. Security policy is never
+# relaxed to manufacture a pass.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  # workflow_dispatch only becomes available once the workflow is on the default
+  # branch, so a schedule/manual-only workflow cannot be exercised before it is
+  # merged. This path filter makes the workflow run on pull requests that touch
+  # the workflow itself or the scripts it calls, and nothing else — ordinary
+  # code pull requests are unaffected and keep using run-tests.yml alone.
+  pull_request:
+    paths:
+      - '.github/workflows/compatibility.yml'
+      - '.github/scripts/report-resolved-versions.sh'
+      - '.github/scripts/floor-smoke.php'
+      - '.github/scripts/classify-install-failure.php'
+      - '.github/scripts/handle-install-result.sh'
+      - '.github/scripts/mark-tested.sh'
+      - '.github/scripts/summarize-coverage.php'
+      - '.github/scripts/fixtures/**'
+
+permissions:
+  contents: read
+
+jobs:
+  classifier-self-test:
+    # The coverage policy is only as trustworthy as the classifier that decides
+    # what counts as advisory-blocked. Its fixtures are real captured composer
+    # output from earlier failing runs plus the negative cases, and they are
+    # checked before anything relies on the verdict.
+    name: classifier self-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Run classifier self-test
+        run: php .github/scripts/classify-install-failure.php --self-test
+
+  released:
+    # Released-version coverage. composer.json sets minimum-stability:dev, and
+    # --prefer-stable only *prefers* stable, so it will still take a dev branch
+    # when no release satisfies the constraint. This job pins stability to
+    # stable so a dev branch cannot be silently reported as released coverage.
+    name: released - L${{ matrix.laravel }} - P${{ matrix.php }}
+    runs-on: ubuntu-latest
+    needs: classifier-self-test
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4']
+        laravel: ['13.*', '12.*', '11.*']
+        include:
+          - laravel: '13.*'
+            testbench: '11.*'
+            key: 'released-l13'
+          - laravel: '12.*'
+            testbench: '10.*'
+            key: 'released-l12'
+          - laravel: '11.*'
+            testbench: '^9.11'
+            key: 'released-l11'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install released dependencies
+        # Composer's own output is captured to its own file so the classifier
+        # never sees this workflow's echoed script text, which talks about
+        # advisories in prose and would poison the matching. The step always
+        # exits 0; the classification decides what happens next.
+        run: |
+          # Setup and the --no-update require stay under set -e: if they fail
+          # the step fails and the job blocks. They must never be able to feed
+          # their output into the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
+          composer config minimum-stability stable
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+
+          set +e
+          composer update --prefer-stable --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
+          cat "${RUNNER_TEMP}/install.log"
+          exit 0
+
+      - name: Classify install result
+        id: result
+        run: bash .github/scripts/handle-install-result.sh "released - L${{ matrix.laravel }} - P${{ matrix.php }}" "${{ matrix.key }}" "${RUNNER_TEMP}/install.log" "${RUNNER_TEMP}/install.exit"
+
+      - name: Report resolved versions
+        if: steps.result.outputs.status == 'success'
+        run: bash .github/scripts/report-resolved-versions.sh "released - L${{ matrix.laravel }} - P${{ matrix.php }}"
+
+      - name: Execute tests
+        if: steps.result.outputs.status == 'success'
+        run: vendor/bin/pest --ci --no-coverage
+
+      - name: Mark coverage as tested
+        if: steps.result.outputs.status == 'success'
+        run: bash .github/scripts/mark-tested.sh "${{ matrix.key }}"
+
+      - name: Upload coverage status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-status-${{ matrix.key }}
+          path: ${{ runner.temp }}/coverage-status/*.json
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
+          retention-days: 7
+
+  lowest-installable:
+    # Deliberately NOT a floor job. --prefer-lowest does not reach this package's
+    # declared floors, because the dev toolchain constrains the graph above them
+    # (pestphp/pest-plugin-laravel requires laravel/framework
+    # ^11.45.2|^12.52.0|^13.0). The declared floors are checked by floor-smoke.
+    name: lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}
+    runs-on: ubuntu-latest
+    needs: classifier-self-test
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3']
+        laravel: ['13.*', '12.*', '11.*']
+        include:
+          - laravel: '13.*'
+            testbench: '11.*'
+            declared-floor: '13.0.0'
+            key: 'lowest-l13'
+          - laravel: '12.*'
+            testbench: '10.*'
+            declared-floor: '12.0.0'
+            key: 'lowest-l12'
+          - laravel: '11.*'
+            testbench: '^9.11'
+            declared-floor: '11.44.0'
+            key: 'lowest-l11'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          # Setup and the --no-update require stay under set -e: if they fail
+          # the step fails and the job blocks. They must never be able to feed
+          # their output into the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:^3.8.4" "pestphp/pest:^4.0" "pestphp/pest-plugin-laravel:^4.0" --no-interaction --no-update
+
+          set +e
+          composer update --prefer-lowest --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
+          cat "${RUNNER_TEMP}/install.log"
+          exit 0
+
+      - name: Classify install result
+        id: result
+        run: bash .github/scripts/handle-install-result.sh "lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}" "${{ matrix.key }}" "${RUNNER_TEMP}/install.log" "${RUNNER_TEMP}/install.exit"
+
+      - name: Report resolved versions
+        if: steps.result.outputs.status == 'success'
+        run: bash .github/scripts/report-resolved-versions.sh "lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}" "${{ matrix['declared-floor'] }}"
+
+      - name: Execute tests
+        if: steps.result.outputs.status == 'success'
+        run: vendor/bin/pest --ci --no-coverage
+
+      - name: Mark coverage as tested
+        if: steps.result.outputs.status == 'success'
+        run: bash .github/scripts/mark-tested.sh "${{ matrix.key }}"
+
+      - name: Upload coverage status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-status-${{ matrix.key }}
+          path: ${{ runner.temp }}/coverage-status/*.json
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
+          retention-days: 7
+
+  floor-smoke:
+    # The declared floors are checked the way a consumer meets them: with
+    # --no-dev, so the dev toolchain (which cannot install them) is out of the
+    # picture.
+    #
+    # The version is pinned to an EXACT release, not a patch wildcard. A range
+    # like 11.44.* can resolve a later patch, and with minimum-stability:dev it
+    # can resolve a branch alias — either of which would let this job report
+    # success under the declared floor's name. The smoke script re-checks the
+    # installed version before it does anything.
+    name: floor smoke - laravel/framework ${{ matrix.floor }}
+    runs-on: ubuntu-latest
+    needs: classifier-self-test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - floor: '11.44.0'
+            php: '8.3'
+            key: 'floor-11-44-0'
+          - floor: '12.0.0'
+            php: '8.3'
+            key: 'floor-12-0-0'
+          - floor: '13.0.0'
+            php: '8.3'
+            key: 'floor-13-0-0'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Build a consumer-shaped install at the declared floor
+        # minimum-stability:dev is required for the path repository (the package
+        # itself only has a dev-<branch> version there). It does NOT loosen the
+        # framework, which is pinned to an exact release below.
+        #
+        # Security policy is left at its defaults. Disabling advisory blocking to
+        # make this job green would be reporting a floor that a consumer cannot
+        # actually install.
+        run: |
+          # Fixture setup and the --no-update require stay under set -e: a
+          # failure there is a broken workflow and must block, and its output
+          # must never reach the advisory classifier, which only ever sees the
+          # captured output of the resolution below.
+          set -e
+          mkdir -p "${RUNNER_TEMP}/floor-consumer"
+          cd "${RUNNER_TEMP}/floor-consumer"
+          printf '{}' > composer.json
+          composer config name smoke/floor-consumer
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config repositories.package "{\"type\":\"path\",\"url\":\"${GITHUB_WORKSPACE}\",\"options\":{\"symlink\":false}}"
+          composer require "tey/laravel-ddd:*@dev" "laravel/framework:${{ matrix.floor }}" --no-interaction --no-update
+
+          set +e
+          composer update --no-dev --prefer-dist --no-interaction > "${RUNNER_TEMP}/install.log" 2>&1
+          echo $? > "${RUNNER_TEMP}/install.exit"
+          set -e
+
+          cat "${RUNNER_TEMP}/install.log"
+          exit 0
+
+      - name: Classify install result
+        id: result
+        run: bash .github/scripts/handle-install-result.sh "floor smoke - laravel/framework ${{ matrix.floor }}" "${{ matrix.key }}" "${RUNNER_TEMP}/install.log" "${RUNNER_TEMP}/install.exit"
+
+      - name: Verify the package loads against the floor
+        # A smoke failure here is a real result and always blocks: the floor
+        # installed, so the package either works against it or does not.
+        if: steps.result.outputs.status == 'success'
+        run: php .github/scripts/floor-smoke.php "${RUNNER_TEMP}/floor-consumer/vendor/autoload.php" "${{ matrix.floor }}"
+
+      - name: Report floor result
+        if: steps.result.outputs.status == 'success'
+        run: |
+          cd "${RUNNER_TEMP}/floor-consumer"
+          bash "${GITHUB_WORKSPACE}/.github/scripts/report-resolved-versions.sh" "floor smoke - ${{ matrix.floor }}"
+
+      - name: Mark coverage as tested
+        if: steps.result.outputs.status == 'success'
+        run: bash .github/scripts/mark-tested.sh "${{ matrix.key }}"
+
+      - name: Upload coverage status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-status-${{ matrix.key }}
+          path: ${{ runner.temp }}/coverage-status/*.json
+          # A leg that produced no status is a broken workflow, not a quiet
+          # success: fail here so the gap cannot reach the summary unnoticed.
+          if-no-files-found: error
+          retention-days: 7
+
+  dev-canary:
+    # Non-blocking: a failure here means the NEXT Laravel major is drifting away
+    # from this package. Worth seeing early, never a gate.
+    #
+    # continue-on-error is set per step rather than on the job. A job-level
+    # continue-on-error still reports `needs.dev-canary.result` as 'success' to
+    # dependent jobs, which would hide a real failure behind a green summary
+    # row. Step outcomes are published as job outputs so the summary can state
+    # what actually happened. This job reports its real outcomes and is not run
+    # through the coverage classifier.
+    name: dev canary - laravel/framework dev-master
+    runs-on: ubuntu-latest
+    outputs:
+      install: ${{ steps.install.outcome }}
+      tests: ${{ steps.tests.outcome }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          # dev-master pulls symfony/console ^8.1, which requires php >= 8.4.1,
+          # so the canary cannot resolve on 8.3.
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: |
+          composer require "laravel/framework:dev-master" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction
+
+      - name: Report resolved versions
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: bash .github/scripts/report-resolved-versions.sh "dev canary - dev-master"
+
+      - name: Execute tests
+        id: tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: vendor/bin/pest --ci --no-coverage
+
+      - name: Report canary outcome
+        run: |
+          install_outcome="${{ steps.install.outcome }}"
+          tests_outcome="${{ steps.tests.outcome }}"
+          {
+            echo "### dev canary - laravel/framework dev-master"
+            echo
+            echo "| Step | Outcome |"
+            echo "| --- | --- |"
+            echo "| install | ${install_outcome} |"
+            echo "| tests | ${tests_outcome:-skipped} |"
+            echo
+            echo "> Non-blocking. This tracks the next Laravel major and is not released-version coverage."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$install_outcome" != 'success' ]; then
+            echo "::warning::dev canary could not install laravel/framework dev-master"
+          elif [ "$tests_outcome" != 'success' ]; then
+            echo "::warning::dev canary tests FAILED against laravel/framework dev-master"
+          fi
+
+  report:
+    name: compatibility summary
+    runs-on: ubuntu-latest
+    needs: [classifier-self-test, released, lowest-installable, floor-smoke, dev-canary]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Download coverage statuses
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-status-*
+          path: coverage-status
+          merge-multiple: true
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Summarize coverage
+        # Per-matrix status comes from artifacts, not job outputs: every leg of a
+        # matrix writes to the same `outputs` map, so the last one to finish
+        # would be the only one anybody sees.
+        run: php .github/scripts/summarize-coverage.php coverage-status
+
+      - name: Summarize the dev canary
+        run: |
+          canary_install="${{ needs.dev-canary.outputs.install }}"
+          canary_tests="${{ needs.dev-canary.outputs.tests }}"
+
+          if [ "$canary_install" != 'success' ]; then
+            canary="install failed"
+          elif [ "$canary_tests" = 'success' ]; then
+            canary="passed"
+          else
+            canary="tests ${canary_tests:-did not run}"
+          fi
+
+          {
+            echo "### dev canary (non-blocking)"
+            echo
+            echo "Outcome: **${canary}**. This tracks the next Laravel major and is never released-version coverage."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any non-canary job did not succeed
+        # The coverage table only describes legs that got far enough to record a
+        # status. A job that died earlier — a broken setup step, a failed
+        # artifact upload, a cancelled runner — would otherwise be invisible
+        # here, so every non-canary job result is gated directly as well. The
+        # dev canary is excluded on purpose: it is allowed to be red.
+        if: >-
+          needs.classifier-self-test.result != 'success' ||
+          needs.released.result != 'success' ||
+          needs.lowest-installable.result != 'success' ||
+          needs.floor-smoke.result != 'success'
+        run: |
+          echo "::error::classifier-self-test=${{ needs.classifier-self-test.result }} released=${{ needs.released.result }} lowest-installable=${{ needs.lowest-installable.result }} floor-smoke=${{ needs.floor-smoke.result }}"
+          echo "::error::A compatibility job did not succeed. Coverage reported below only covers legs that recorded a status."
+          exit 1

@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, next, develop, develop-internals]
+    # chore/framework-compatibility is a stacked base: pull requests targeting it
+    # are real changes that need the full matrix, and without it listed here they
+    # would merge upward having never run these tests.
+    branches: [main, next, develop, develop-internals, chore/framework-compatibility, fix/listener-discovery-filtering, refactor/test-harness-isolation]
 
 jobs:
   test:
@@ -57,8 +60,12 @@ jobs:
           composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "nesbot/carbon:${{ matrix.carbon }}" "pestphp/pest:${{ matrix.pest }}" "pestphp/pest-plugin-laravel:${{ matrix['pest-plugin'] }}" --no-interaction --no-update
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction
 
-      - name: List Installed Dependencies
-        run: composer show -D
+      - name: Report resolved versions
+        # The matrix label is not evidence of what installed: "11.*" can resolve
+        # to 11.x-dev, and prefer-lowest routinely lands above the declared
+        # floor. Record the resolved set where it is actually readable.
+        shell: bash
+        run: bash .github/scripts/report-resolved-versions.sh "P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.stability }} - ${{ matrix.os }}"
 
       - name: Execute tests
         run: vendor/bin/pest --ci --no-coverage
