@@ -40,7 +40,7 @@ it('compares bounded consumer behavior with the frozen v3 source', function () {
         }
         $files->copy($checkout.'/composer.json', $mutant.'/composer.json');
         $config = $files->get($mutant.'/config/ddd.php');
-        $changed = str_replace("'class' => ''", "'class' => 'UnexpectedClasses'", $config, $replacements);
+        $changed = preg_replace("/'class'\\s*=>\\s*''/", "'class' => 'UnexpectedClasses'", $config, -1, $replacements);
         expect($replacements)->toBe(1);
         $files->put($mutant.'/config/ddd.php', $changed);
 
