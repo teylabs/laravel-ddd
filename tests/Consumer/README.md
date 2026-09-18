@@ -57,4 +57,4 @@ driver with concrete consumer contracts as extraction work reaches them; keep th
 reference implementation in its own process and never calculate expected paths
 with the candidate resolver.
 
-The subscriber compatibility correction retains the frozen source and adds an explicit expected delta for the two InvoiceEventSubscriber handlers that #118 excluded. Candidate inventories are not filtered or normalized: the comparison requires both restored entries at their exact positions and continues comparing every other observation unchanged.
+The subscriber compatibility correction retains the frozen source and captures a second isolated reference after an exact, asserted one-line amendment restoring its subscriber handlers. Only that reference's listener inventory becomes the expected intentional delta; all other observations still compare against the unmodified baseline. This preserves filesystem-dependent discovery order without sorting, filtering candidate results or guessing insertion positions. The reference amendment is fixed test code, not derived from the candidate.

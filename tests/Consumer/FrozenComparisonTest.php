@@ -28,16 +28,22 @@ it('compares bounded consumer behavior with the frozen v3 source', function () {
                 ->and($capture['observations']['discovery']['listeners']['subscribers'])->toContain('Domain\\Invoicing\\Listeners\\InvoiceEventSubscriber');
         }
 
-        // The pinned post-#118 source excluded subscriber handlers. The only
-        // intentional difference restores these two original v3 registrations.
-        // Keep the exact expected delta; do not filter candidate observations.
-        array_unshift(
-            $reference['observations']['discovery']['listeners']['listeners']['Domain\\Invoicing\\Events\\InvoiceCreated'],
-            ['Domain\\Invoicing\\Listeners\\InvoiceEventSubscriber', 'handleInvoiceCreated'],
+        // Model the deliberate compatibility correction in the isolated
+        // reference copy. Discovery order comes from the runner's filesystem,
+        // so inserting expected entries at hard-coded offsets is not portable.
+        // This exact one-line amendment is independent of candidate output.
+        $discoveryPath = $root.'/src/Support/DomainDiscovery.php';
+        $discovery = $files->get($discoveryPath);
+        $amended = str_replace(
+            "'listeners' => static::withoutSubscriberListeners(\$listeners, \$subscribers),",
+            "'listeners' => \$listeners,",
+            $discovery,
+            $replacements,
         );
-        $reference['observations']['discovery']['listeners']['listeners']['Domain\\Invoicing\\Events\\InvoicePaid'] = [
-            ['Domain\\Invoicing\\Listeners\\InvoiceEventSubscriber', 'handleInvoicePaid'],
-        ];
+        expect($replacements)->toBe(1);
+        $files->put($discoveryPath, $amended);
+        $compatibilityReference = Comparison::capture($root);
+        $reference['observations']['discovery']['listeners'] = $compatibilityReference['observations']['discovery']['listeners'];
 
         expect($candidate['observations'])->toBe($reference['observations']);
 
