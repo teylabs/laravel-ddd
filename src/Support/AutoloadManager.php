@@ -3,6 +3,7 @@
 namespace Tey\LaravelDDD\Support;
 
 use Closure;
+use Composer\Autoload\ClassLoader;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Application;
@@ -303,6 +304,18 @@ class AutoloadManager
     private function cachedClassesExist(array $classes): bool
     {
         foreach (array_unique($classes) as $class) {
+            // Optimized Composer maps can retain deleted paths after an SSH
+            // hotfix. Avoid executing that stale include; errors inside files
+            // that still exist must continue to propagate normally.
+            if (! class_exists($class, false)) {
+                foreach (ClassLoader::getRegisteredLoaders() as $loader) {
+                    $file = $loader->findFile($class);
+                    if ($file !== false && ! is_file($file)) {
+                        return false;
+                    }
+                }
+            }
+
             if (! class_exists($class)) {
                 return false;
             }

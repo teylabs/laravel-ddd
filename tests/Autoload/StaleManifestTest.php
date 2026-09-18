@@ -1,5 +1,6 @@
 <?php
 
+use Composer\Autoload\ClassLoader;
 use Domain\Invoicing\Events\InvoiceTracked;
 use Illuminate\Support\Facades\Event;
 use Tey\LaravelDDD\Support\AutoloadManager;
@@ -117,3 +118,54 @@ class BrokenCachedSubscriber
         throw new RuntimeException('Subscriber failed');
     }
 }
+
+it('recovers a deleted Composer classmap file without rebuilding autoload', function () {
+    $directory = sys_get_temp_dir().'/ddd-stale-'.bin2hex(random_bytes(8));
+    mkdir($directory);
+    $file = $directory.'/RemovedListener.php';
+    file_put_contents($file, '<?php namespace Domain; class RemovedMappedListener {}');
+    $loader = new ClassLoader($directory);
+    $loader->addClassMap(['Domain\\RemovedMappedListener' => $file]);
+    $loader->register(true);
+    try {
+        DomainCache::set('domain-listeners', [
+            'listeners' => [InvoiceTracked::class => ['Domain\\RemovedMappedListener']],
+            'subscribers' => [],
+        ]);
+        unlink($file);
+
+        (new AutoloadManager)->run();
+        Event::dispatch($event = new InvoiceTracked);
+
+        expect($event->calls)->toContain('domain-listener')
+            ->and($loader->getClassMap()['Domain\\RemovedMappedListener'])->toBe($file);
+    } finally {
+        $loader->unregister();
+        if (is_file($file)) {
+            unlink($file);
+        }
+        rmdir($directory);
+    }
+});
+
+it('propagates errors inside an existing Composer mapped file', function () {
+    $directory = sys_get_temp_dir().'/ddd-broken-'.bin2hex(random_bytes(8));
+    mkdir($directory);
+    $file = $directory.'/BrokenListener.php';
+    file_put_contents($file, '<?php throw new RuntimeException("Mapped file is broken");');
+    $loader = new ClassLoader($directory);
+    $loader->addClassMap(['Domain\\BrokenMappedListener' => $file]);
+    $loader->register(true);
+    try {
+        DomainCache::set('domain-listeners', [
+            'listeners' => [InvoiceTracked::class => ['Domain\\BrokenMappedListener']],
+            'subscribers' => [],
+        ]);
+        expect(fn () => (new AutoloadManager)->boot())
+            ->toThrow(RuntimeException::class, 'Mapped file is broken');
+    } finally {
+        $loader->unregister();
+        unlink($file);
+        rmdir($directory);
+    }
+});
