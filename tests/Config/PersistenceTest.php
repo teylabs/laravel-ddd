@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Symfony\Component\Process\Exception\RuntimeException as ProcessException;
 use Tey\LaravelDDD\ConfigManager;
 use Tey\LaravelDDD\Facades\DDD;
 
@@ -97,6 +98,31 @@ function directoryStillAcceptsWrites(string $directory): bool
     return $written !== false;
 }
 
+/**
+ * Whether symbolic links can be created here.
+ *
+ * Windows only allows them with particular privileges, so this asks by trying
+ * rather than by guessing from the platform, and clears up after itself.
+ */
+function canCreateSymlinks(): bool
+{
+    $target = config_path('ddd-symlink-probe-target-'.bin2hex(random_bytes(6)));
+    $link = config_path('ddd-symlink-probe-link-'.bin2hex(random_bytes(6)));
+
+    File::ensureDirectoryExists(dirname($target));
+    file_put_contents($target, 'probe');
+
+    $created = @symlink($target, $link);
+
+    if (is_link($link)) {
+        @unlink($link);
+    }
+
+    @unlink($target);
+
+    return (bool) $created;
+}
+
 it('leaves its own values alone when saving, and saves the same file again', function () {
     // save() used to hide each namespace separator behind a marker and write the
     // result back through set(). The FILE was correct, so this was invisible
@@ -161,9 +187,9 @@ it('stages beside the destination and removes the staged file afterwards', funct
 
         public array $existedDuringFormat = [];
 
-        protected function stagingPath(): string
+        protected function stagingPath(string $destination): string
         {
-            return $this->stagingPaths[] = parent::stagingPath();
+            return $this->stagingPaths[] = parent::stagingPath($destination);
         }
 
         protected function format(string $path, string $rendered): void
@@ -391,7 +417,7 @@ it('fails rather than publishing a short write', function () {
 
     $config = new class($path) extends ConfigManager
     {
-        protected function stagingPath(): string
+        protected function stagingPath(string $destination): string
         {
             return 'ddd-short://stage';
         }
@@ -544,6 +570,198 @@ it('formats a staged file despite its extension', function () {
 
     unlink($staged);
     unlink($plain);
+});
+
+it('writes through a symlinked configuration file rather than replacing the link', function (string $description, bool $relative) {
+    // copy() wrote THROUGH a link. rename() replaces the link itself, so
+    // without resolving it first, a consumer pointing config/ddd.php at a
+    // shared or release-managed file would find their link quietly turned into
+    // a regular file and the real target left stale.
+    if (! canCreateSymlinks()) {
+        $this->markTestSkipped('Symbolic links cannot be created here.');
+    }
+
+    $link = config_path('ddd.php');
+    $target = base_path('shared/ddd.php');
+
+    File::ensureDirectoryExists(dirname($target));
+    file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Shared\Models\Base'], true).';');
+
+    // A relative target resolves against the LINK's directory, not the working
+    // directory, which is the case a naive readlink() would get wrong.
+    symlink($relative ? '../shared/ddd.php' : $target, $link);
+
+    $linkTargetBefore = readlink($link);
+
+    (new ConfigManager($link))->syncWithLatest()->save();
+
+    expect(is_link($link))->toBeTrue("{$description}: the link itself was replaced")
+        ->and(readlink($link))->toBe($linkTargetBefore, "{$description}: the link now points somewhere else")
+        // Written through the link: the target carries the new contents, and
+        // reading the link path gives the same thing.
+        ->and((include $target)['base_model'])->toBe('Domain\Shared\Models\Base')
+        ->and(include $target)->toHaveKeys(array_keys(require DDD::packagePath('config/ddd.php')))
+        ->and(include $link)->toBe(include $target)
+        ->and(strayFilesBeside($target))->toBe([])
+        ->and(strayFilesBeside($link))->toBe([]);
+
+    unlink($link);
+    unlink($target);
+})->with([
+    'absolute target' => ['absolute target', false],
+    'relative target' => ['relative target', true],
+]);
+
+it('keeps the permissions of a symlinked target', function () {
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $this->markTestSkipped('Windows has no mode bits to carry over; the save does not try.');
+    }
+
+    if (! canCreateSymlinks()) {
+        $this->markTestSkipped('Symbolic links cannot be created here.');
+    }
+
+    $link = config_path('ddd.php');
+    $target = base_path('shared/ddd.php');
+
+    File::ensureDirectoryExists(dirname($target));
+    file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Shared\Models\Base'], true).';');
+    chmod($target, 0600);
+
+    symlink($target, $link);
+
+    (new ConfigManager($link))->syncWithLatest()->save();
+
+    expect(fileperms($target) & 0777)->toBe(0600)
+        ->and(is_link($link))->toBeTrue();
+
+    chmod($target, 0644);
+    unlink($link);
+    unlink($target);
+});
+
+it('leaves a symlink and its target alone when the target cannot be written', function () {
+    if (! canCreateSymlinks()) {
+        $this->markTestSkipped('Symbolic links cannot be created here.');
+    }
+
+    $link = config_path('ddd.php');
+    $target = base_path('shared/ddd.php');
+
+    File::ensureDirectoryExists(dirname($target));
+    file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Untouched\Model'], true).';');
+
+    symlink($target, $link);
+
+    $original = file_get_contents($target);
+    $originalMode = fileperms(dirname($target)) & 0777;
+
+    chmod(dirname($target), 0555);
+
+    try {
+        if (directoryStillAcceptsWrites(dirname($target))) {
+            $this->markTestSkipped('Writes to the target directory still succeed after chmod here.');
+        }
+
+        $config = new ConfigManager($link);
+        $config->syncWithLatest();
+
+        expect(fn () => $config->save())->toThrow(RuntimeException::class);
+    } finally {
+        chmod(dirname($target), $originalMode);
+    }
+
+    expect(file_get_contents($target))->toBe($original)
+        ->and(is_link($link))->toBeTrue()
+        ->and(strayFilesBeside($target))->toBe([]);
+
+    unlink($link);
+    unlink($target);
+});
+
+it('refuses a symlink whose target does not exist, and leaves the link alone', function () {
+    // A DELIBERATE COMPATIBILITY LIMIT. copy() would have created the missing
+    // target; rename() cannot do that without destroying the link, so this
+    // fails loudly instead of quietly replacing the link with a regular file.
+    if (! canCreateSymlinks()) {
+        $this->markTestSkipped('Symbolic links cannot be created here.');
+    }
+
+    $link = config_path('ddd.php');
+    $missing = base_path('shared/never-written.php');
+
+    File::ensureDirectoryExists(dirname($missing));
+    symlink($missing, $link);
+
+    $config = new ConfigManager($link);
+    $config->syncWithLatest();
+
+    expect(fn () => $config->save())->toThrow(RuntimeException::class, 'symbolic link');
+
+    expect(is_link($link))->toBeTrue('the link was removed')
+        ->and(readlink($link))->toBe($missing)
+        ->and(file_exists($missing))->toBeFalse()
+        ->and(strayFilesBeside($link))->toBe([]);
+
+    unlink($link);
+});
+
+it('publishes the configuration when the formatter cannot be launched', function () {
+    // formatterPath() only checks that the file is there, so a file that cannot
+    // be run gets as far as being run. What happens then is the operating
+    // system's business: macOS hands back exit code 126, other systems report a
+    // failed launch and Symfony raises. This pins the outcome that must hold
+    // either way — the save publishes — while the test below pins the raising
+    // case against the exact exception, since this one cannot produce it here.
+    $path = config_path('ddd.php');
+
+    $binary = base_path('not-executable-pint');
+
+    File::ensureDirectoryExists(dirname($binary));
+    file_put_contents($binary, "#!/bin/sh\necho nope\n");
+    chmod($binary, 0644);
+
+    File::ensureDirectoryExists(dirname($path));
+    file_put_contents($path, '<?php return '.var_export(['base_model' => 'Domain\Shared\Models\Base'], true).';');
+
+    $config = new class($path, $binary) extends ConfigManager
+    {
+        public function __construct(string $path, protected string $binary)
+        {
+            parent::__construct($path);
+        }
+
+        protected function formatterPath(): ?string
+        {
+            return $this->binary;
+        }
+    };
+
+    $config->syncWithLatest()->save();
+
+    expect((include $path)['base_model'])->toBe('Domain\Shared\Models\Base')
+        ->and(include $path)->toHaveKeys(array_keys(require DDD::packagePath('config/ddd.php')));
+
+    unlink($binary);
+    unlink($path);
+});
+
+it('publishes the configuration when running the formatter raises', function () {
+    // The same guarantee, stated against the exact exception rather than
+    // whatever the operating system happens to do with a non-executable file:
+    // some report a failed launch, others just hand back a non-zero exit code.
+    Process::fake([
+        '*' => new ProcessException('The process "vendor/bin/pint" could not be started.'),
+    ]);
+
+    $path = config_path('ddd.php');
+
+    persistedConfig(['base_model' => 'Domain\Shared\Models\Base'])->syncWithLatest()->save();
+
+    expect((include $path)['base_model'])->toBe('Domain\Shared\Models\Base')
+        ->and(include $path)->toHaveKeys(array_keys(require DDD::packagePath('config/ddd.php')));
+
+    unlink($path);
 });
 
 it('replaces a destination that already exists', function () {

@@ -5,6 +5,7 @@ namespace Tey\LaravelDDD;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
+use Symfony\Component\Process\Exception\RuntimeException as ProcessException;
 use Symfony\Component\VarExporter\VarExporter;
 use Tey\LaravelDDD\Facades\DDD;
 
@@ -350,9 +351,47 @@ class ConfigManager
      * Every save used to write to sys_get_temp_dir()/ddd.php — one fixed name
      * shared by every process on the machine, left behind after the copy.
      */
-    protected function stagingPath(): string
+    protected function stagingPath(string $destination): string
     {
-        return $this->configPath.'.'.getmypid().'.'.bin2hex(random_bytes(6)).'.tmp';
+        return $destination.'.'.getmypid().'.'.bin2hex(random_bytes(6)).'.tmp';
+    }
+
+    /**
+     * The file the save actually writes.
+     *
+     * Normally the configured path. When that path is a symbolic link it is the
+     * link's target, resolved once here: copy() wrote THROUGH a link, and
+     * rename() would replace the link itself, so a consumer pointing
+     * config/ddd.php at a shared or release-managed file would have found their
+     * link quietly turned into a regular file and the real target left stale.
+     * Staging beside the resolved target also keeps the replacement on the
+     * target's own filesystem.
+     *
+     * $this->configPath is left alone — it is public, and callers are entitled
+     * to read back the path they gave.
+     *
+     * A link with no target is refused. copy() used to create the missing file;
+     * rename() cannot do that without destroying the link, so this is a
+     * deliberate compatibility limit and it fails loudly rather than quietly
+     * replacing the link.
+     */
+    protected function destinationPath(): string
+    {
+        if (! is_link($this->configPath)) {
+            return $this->configPath;
+        }
+
+        // realpath() follows a chain of links and resolves a relative target
+        // against the link's own directory; false means it leads nowhere.
+        $target = realpath($this->configPath);
+
+        if ($target === false) {
+            throw new RuntimeException(
+                "The configuration at {$this->configPath} is a symbolic link whose target does not exist."
+            );
+        }
+
+        return $target;
     }
 
     /**
@@ -412,7 +451,21 @@ class ConfigManager
             return false;
         }
 
-        return Process::run([$formatter, $path])->successful();
+        try {
+            return Process::run([$formatter, $path])->successful();
+        } catch (ProcessException $e) {
+            // The binary exists — formatterPath() checked that much — but could
+            // not be run: not executable, not a program, an unusable working
+            // directory, or it timed out. Every process failure Symfony and
+            // Laravel raise descends from this one class, while their
+            // LogicException and InvalidArgumentException, which mean this code
+            // called the process API wrongly, do not — those still escape.
+            //
+            // A formatter that cannot start is a formatter that did not format,
+            // which is the case format() already handles. Letting it through
+            // would abort a save that has perfectly good bytes to publish.
+            return false;
+        }
     }
 
     /**
@@ -508,7 +561,11 @@ class ConfigManager
     {
         $content = $this->render();
 
-        $stagingPath = $this->stagingPath();
+        // Resolved before anything is written, so a link that leads nowhere
+        // fails without a staged file ever existing.
+        $destination = $this->destinationPath();
+
+        $stagingPath = $this->stagingPath($destination);
 
         try {
             // Nothing touches the destination until there is a complete,
@@ -519,7 +576,7 @@ class ConfigManager
 
             $this->format($stagingPath, $content);
 
-            $this->replace($stagingPath, $this->configPath);
+            $this->replace($stagingPath, $destination);
         } finally {
             if (is_file($stagingPath)) {
                 @unlink($stagingPath);
