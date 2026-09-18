@@ -4,6 +4,7 @@ namespace Tey\LaravelDDD;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Process;
+use RuntimeException;
 use Symfony\Component\VarExporter\VarExporter;
 use Tey\LaravelDDD\Facades\DDD;
 
@@ -21,7 +22,10 @@ class ConfigManager
 
         $this->packageConfig = require DDD::packagePath('config/ddd.php');
 
-        $this->config = file_exists($configPath) ? require ($configPath) : $this->packageConfig;
+        // Read the resolved path, not the nullable argument: constructed without
+        // one, this used to fall back to package defaults even when the consumer
+        // had a config file sitting exactly where configPath points.
+        $this->config = file_exists($this->configPath) ? require $this->configPath : $this->packageConfig;
 
         $this->stub = file_get_contents(DDD::packagePath('config/ddd.php.stub'));
     }
@@ -62,20 +66,6 @@ class ConfigManager
      * and filled list gaps by numeric position. Now defaults are merged into what
      * is there, and a collection the consumer owns is returned whole.
      */
-    /**
-     * The consumer's value at a path, or the given default.
-     *
-     * Deliberately not resolve(): resolve() has only ever been handed leaf
-     * values — the sync walked down to the scalars and called it there — so an
-     * override written against that contract can reasonably expect a scalar,
-     * and handing it a whole collection would break it. mergeArray() is the
-     * hook for arrays, and it is still the one that classifies and merges them.
-     */
-    protected function lookup($path, mixed $default): mixed
-    {
-        return data_get($this->config, Arr::wrap($path), $default);
-    }
-
     protected function mergeArray($path, $array)
     {
         if ($this->isConsumerOwnedCollection($path, $array)) {
@@ -98,6 +88,20 @@ class ConfigManager
         }
 
         return $merged;
+    }
+
+    /**
+     * The consumer's value at a path, or the given default.
+     *
+     * Deliberately not resolve(): resolve() has only ever been handed leaf
+     * values — the sync walked down to the scalars and called it there — so an
+     * override written against that contract can reasonably expect a scalar,
+     * and handing it a whole collection would break it. mergeArray() is the
+     * hook for arrays, and it is still the one that classifies and merges them.
+     */
+    protected function lookup($path, mixed $default): mixed
+    {
+        return data_get($this->config, Arr::wrap($path), $default);
     }
 
     /**
@@ -180,68 +184,347 @@ class ConfigManager
         return $this;
     }
 
-    public function save()
+    /**
+     * Keys whose values carry namespace separators.
+     */
+    protected const KEYS_WITH_NAMESPACES = [
+        'domain_namespace',
+        'application_namespace',
+        'layers',
+        'namespaces',
+        'base_model',
+        'base_dto',
+        'base_view_model',
+        'base_action',
+    ];
+
+    /**
+     * A marker that stands in for a namespace separator while a value is
+     * exported, and cannot collide with anything being exported.
+     *
+     * The separators are hidden because VarExporter escapes a backslash, and the
+     * published file has always shown 'Domain\Shared\Models' rather than
+     * 'Domain\\Shared\\Models'. A FIXED marker made that unsafe: a value that
+     * happened to contain the marker's own text was rewritten on the way out.
+     * This one is random per render and checked against everything being
+     * written, so it stands for a separator and nothing else.
+     */
+    protected function separatorMarker(array $config): string
     {
-        $content = $this->stub;
+        $haystack = $this->stub.serialize($config);
 
-        // We will temporary substitute namespace slashes
-        // with a placeholder to avoid double exporter
-        // escaping them as double backslashes.
-        $keysWithNamespaces = [
-            'domain_namespace',
-            'application_namespace',
-            'layers',
-            'namespaces',
-            'base_model',
-            'base_dto',
-            'base_view_model',
-            'base_action',
-        ];
+        do {
+            $marker = '__ddd_ns_'.bin2hex(random_bytes(8)).'__';
+        } while (str_contains($haystack, $marker));
 
-        foreach ($keysWithNamespaces as $key) {
-            $value = $this->get($key);
+        return $marker;
+    }
 
-            if (is_string($value)) {
-                $value = str_replace('\\', '[[BACKSLASH]]', $value);
-            }
+    /**
+     * Whether a string's separators can be shown literally.
+     *
+     * Inside single quotes a backslash only means something before another
+     * backslash or a quote, so 'Domain\Shared' reads back exactly as written —
+     * but 'Domain\\Shared' reads back as one backslash, and 'Domain\' does not
+     * terminate the string at all. Anything in that territory is left alone and
+     * exported with its escaping intact, which is correct if less pretty. This
+     * is about the file's appearance; it is never about what it means.
+     */
+    protected function canShowSeparatorsLiterally(string $value): bool
+    {
+        return ! str_contains($value, "'")
+            && ! str_contains($value, '\\\\')
+            && ! str_ends_with($value, '\\');
+    }
 
-            if (is_array($value)) {
-                $array = $value;
-                foreach ($array as $k => $v) {
-                    // Only strings. An entry the consumer set to null or false
-                    // is a deliberate value that the merge now preserves, and
-                    // str_replace() would turn it into an empty string on the
-                    // way to the file.
-                    if (is_string($v)) {
-                        $array[$k] = str_replace('\\', '[[BACKSLASH]]', $v);
-                    }
-                }
-                $value = $array;
-            }
-
-            $this->set($key, $value);
+    protected function hideSeparators(mixed $value, string $marker): mixed
+    {
+        if (is_string($value)) {
+            return $this->canShowSeparatorsLiterally($value)
+                ? str_replace('\\', $marker, $value)
+                : $value;
         }
+
+        if (is_array($value)) {
+            return array_map(fn ($item) => $this->hideSeparators($item, $marker), $value);
+        }
+
+        // null, false and anything else the consumer set deliberately: untouched.
+        return $value;
+    }
+
+    /**
+     * The exported PHP literal for every configured value.
+     *
+     * Exported from a COPY. save() used to hide the separators by writing the
+     * markers back into the manager's own values through set(), so after saving,
+     * get('base_model') returned 'Domain[[BACKSLASH]]Shared[[BACKSLASH]]Models'
+     * — the file was right, the object was left holding nonsense.
+     */
+    protected function exportedValues(string $marker): array
+    {
+        $exported = [];
 
         foreach ($this->config as $key => $value) {
-            $content = str_replace(
-                '{{'.$key.'}}',
-                VarExporter::export($value),
-                $content
-            );
+            if (in_array($key, static::KEYS_WITH_NAMESPACES, true)) {
+                $value = $this->hideSeparators($value, $marker);
+            }
+
+            $exported[$key] = VarExporter::export($value);
         }
 
-        // Restore namespace slashes
-        $content = str_replace('[[BACKSLASH]]', '\\', $content);
+        return $exported;
+    }
 
-        // Write it to a temporary file first
-        $tempPath = sys_get_temp_dir().'/ddd.php';
-        file_put_contents($tempPath, $content);
+    /**
+     * The configuration file's contents, without touching any state.
+     */
+    public function render(): string
+    {
+        $marker = $this->separatorMarker($this->config);
 
-        // Format it using pint
-        Process::run("./vendor/bin/pint {$tempPath}");
+        $exported = $this->exportedValues($marker);
 
-        // Copy the temporary file to the config path
-        copy($tempPath, $this->configPath);
+        $replacements = [];
+
+        foreach ($exported as $key => $literal) {
+            $replacements['{{'.$key.'}}'] = $literal;
+        }
+
+        // strtr() rather than str_replace() in a loop: it walks the subject once
+        // and never looks at what it has already substituted, so a value whose
+        // own text contains {{another_key}} is written out as the consumer wrote
+        // it instead of being rewritten by a later replacement.
+        $content = strtr($this->stub, $replacements);
+
+        $content = $this->appendUnplaceheldKeys($content, $exported);
+
+        return str_replace($marker, '\\', $content);
+    }
+
+    /**
+     * Write out any key the stub has no placeholder for.
+     *
+     * The file is produced from a fixed, commented template, so a key the
+     * package does not know about — one an extension added, or one left over
+     * from an older release — has nowhere to go. Syncing keeps such a key in
+     * memory, and saving used to then drop it from the file: publishing a
+     * config, adding a key to it and running the upgrade command silently threw
+     * that key away. They are appended instead, so the template and its comments
+     * stay as they are and nothing the consumer wrote is lost.
+     */
+    protected function appendUnplaceheldKeys(string $content, array $exported): string
+    {
+        $appended = '';
+
+        foreach ($exported as $key => $literal) {
+            if (str_contains($this->stub, '{{'.$key.'}}')) {
+                continue;
+            }
+
+            $appended .= '    '.VarExporter::export($key).' => '.$literal.','.PHP_EOL;
+        }
+
+        if ($appended === '') {
+            return $content;
+        }
+
+        // Before the array's closing bracket, which the stub ends with.
+        $closing = strrpos($content, '];');
+
+        if ($closing === false) {
+            return $content;
+        }
+
+        return substr($content, 0, $closing).$appended.substr($content, $closing);
+    }
+
+    /**
+     * A file this call owns, beside the destination.
+     *
+     * Beside it, not in the system temp directory, so the replacement below is a
+     * rename within one filesystem rather than a copy across two. The extension
+     * is deliberately not .php: Laravel loads every .php file in the config
+     * directory, and a half-written one must not be among them.
+     *
+     * Every save used to write to sys_get_temp_dir()/ddd.php — one fixed name
+     * shared by every process on the machine, left behind after the copy.
+     */
+    protected function stagingPath(): string
+    {
+        return $this->configPath.'.'.getmypid().'.'.bin2hex(random_bytes(6)).'.tmp';
+    }
+
+    /**
+     * Write a file, or fail loudly.
+     *
+     * A short write is a failure. file_put_contents() returns the number of
+     * bytes written, and a disk that fills mid-write returns a number rather
+     * than false — testing only for false publishes a truncated file.
+     */
+    protected function writeFile(string $path, string $content): void
+    {
+        $written = @file_put_contents($path, $content, LOCK_EX);
+
+        if ($written !== strlen($content)) {
+            throw new RuntimeException(
+                "Could not write the configuration to {$path}: expected ".strlen($content)
+                .' bytes, wrote '.var_export($written, true).'.'
+            );
+        }
+    }
+
+    /**
+     * The formatter binary, or null when there is nothing to run.
+     */
+    protected function formatterPath(): ?string
+    {
+        $candidates = DIRECTORY_SEPARATOR === '\\'
+            ? ['vendor\\bin\\pint.bat', 'vendor\\bin\\pint']
+            : ['vendor/bin/pint'];
+
+        foreach ([getcwd(), base_path()] as $root) {
+            if (! is_string($root) || $root === '') {
+                continue;
+            }
+
+            foreach ($candidates as $candidate) {
+                $path = $root.DIRECTORY_SEPARATOR.$candidate;
+
+                if (is_file($path)) {
+                    return $path;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Run the formatter over the staged file.
+     *
+     * Passed as separate arguments rather than interpolated into a command
+     * string, so a path containing a space cannot break it.
+     */
+    protected function runFormatter(string $path): bool
+    {
+        if (($formatter = $this->formatterPath()) === null) {
+            return false;
+        }
+
+        return Process::run([$formatter, $path])->successful();
+    }
+
+    /**
+     * Format the staged file, keeping the rendered bytes if that goes wrong.
+     *
+     * Formatting is best-effort and deliberately stays that way: the previous
+     * call discarded the process result, so a missing or failing binary produced
+     * an unformatted — but complete and valid — file, and consumers have been
+     * saving against that. laravel/pint is a runtime requirement of this
+     * package, so the binary normally is there; it is resolved rather than
+     * assumed because the old command was relative to the working directory,
+     * which is not necessarily the application root.
+     *
+     * What best-effort must not mean is publishing whatever the formatter left
+     * behind. A formatter that fails part-way through rewriting the file leaves
+     * it truncated, so anything other than a clean run and a plausible file puts
+     * the rendered bytes back.
+     */
+    protected function format(string $path, string $rendered): void
+    {
+        $formatted = $this->runFormatter($path);
+
+        if ($formatted && $this->looksLikeAConfigFile($path)) {
+            return;
+        }
+
+        $this->writeFile($path, $rendered);
+    }
+
+    protected function looksLikeAConfigFile(string $path): bool
+    {
+        if (! is_file($path) || filesize($path) === 0) {
+            return false;
+        }
+
+        $contents = @file_get_contents($path);
+
+        return is_string($contents)
+            && str_starts_with($contents, '<?php')
+            && str_contains($contents, '];');
+    }
+
+    /**
+     * Give the staged file the permissions the destination already has.
+     *
+     * Replacing a file by renaming another one over it replaces its permissions
+     * too, and the staged file was created under the process umask. A config
+     * kept at 0600 would quietly come back 0644 after an upgrade, which is a
+     * change nobody asked for. Done BEFORE the replacement, so a failure here
+     * leaves the destination as it was.
+     *
+     * POSIX only. Windows has no mode bits to carry over — chmod() there only
+     * toggles the read-only attribute — so the destination keeps whatever the
+     * filesystem gives the new file. Stated as a limit rather than papered over.
+     */
+    protected function matchDestinationPermissions(string $stagingPath, string $destination): void
+    {
+        if (DIRECTORY_SEPARATOR === '\\' || ! is_file($destination)) {
+            return;
+        }
+
+        $mode = @fileperms($destination);
+
+        if ($mode === false) {
+            throw new RuntimeException("Could not read the permissions of {$destination}.");
+        }
+
+        if (! @chmod($stagingPath, $mode & 0777)) {
+            throw new RuntimeException(
+                'Could not apply the permissions of '.$destination.' to the staged configuration.'
+            );
+        }
+    }
+
+    /**
+     * Put the staged file in place of the destination.
+     *
+     * rename() within one directory, which replaces the destination in a single
+     * step — including on Windows, where PHP asks for MOVEFILE_REPLACE_EXISTING.
+     * If it cannot be done, it is not done: there is no unlink-then-move
+     * fallback, because that trades a failed save for a deleted configuration.
+     */
+    protected function replace(string $stagingPath, string $destination): void
+    {
+        $this->matchDestinationPermissions($stagingPath, $destination);
+
+        if (! @rename($stagingPath, $destination)) {
+            throw new RuntimeException("Could not replace the configuration at {$destination}.");
+        }
+    }
+
+    public function save()
+    {
+        $content = $this->render();
+
+        $stagingPath = $this->stagingPath();
+
+        try {
+            // Nothing touches the destination until there is a complete,
+            // formatted file to put there. copy() could not offer that: it
+            // truncates the destination and then writes, so a failure part way
+            // through left the consumer with a damaged config file.
+            $this->writeFile($stagingPath, $content);
+
+            $this->format($stagingPath, $content);
+
+            $this->replace($stagingPath, $this->configPath);
+        } finally {
+            if (is_file($stagingPath)) {
+                @unlink($stagingPath);
+            }
+        }
 
         return $this;
     }

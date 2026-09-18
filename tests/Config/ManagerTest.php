@@ -173,18 +173,18 @@ it('survives a save and reload, and a second sync changes nothing', function () 
     unlink($path);
 });
 
-it('does not render an unknown top-level key when saving', function () {
-    // A BOUNDED LIMIT, asserted so it is visible rather than assumed. save()
-    // fills {{key}} placeholders in a fixed stub, and there is no placeholder
-    // for a key the package does not know about — so an extension key survives
-    // the merge in memory but is not written back. Rendering arbitrary keys
-    // would mean reworking how the file is produced, which is deliberately not
-    // part of this change.
+it('renders an unknown top-level key when saving', function () {
+    // This previously asserted the opposite, as a bounded limit: save() fills
+    // {{key}} placeholders in a fixed stub, and there is no placeholder for a
+    // key the package does not know about, so an extension key survived the
+    // merge in memory and was then dropped from the file. Rendering now appends
+    // such keys — see tests/Config/PersistenceTest.php, which owns that
+    // behaviour — so the merge and the file agree.
     $path = config_path('ddd.php');
 
     consumerConfig(['some_extension_key' => ['a' => 1]])->syncWithLatest()->save();
 
-    expect(array_key_exists('some_extension_key', include $path))->toBeFalse();
+    expect((include $path)['some_extension_key'])->toBe(['a' => 1]);
 
     unlink($path);
 });
