@@ -77,6 +77,26 @@ class ShortWritingStream
     }
 }
 
+/**
+ * Whether a file can still be created in a directory.
+ *
+ * Asked by trying, because the permission flags do not answer it portably. The
+ * probe is uniquely named so it cannot collide with anything the suite owns, and
+ * it is removed again whether or not the write succeeded.
+ */
+function directoryStillAcceptsWrites(string $directory): bool
+{
+    $probe = $directory.DIRECTORY_SEPARATOR.'ddd-write-probe-'.getmypid().'-'.bin2hex(random_bytes(6));
+
+    $written = @file_put_contents($probe, 'probe');
+
+    if (is_file($probe)) {
+        @unlink($probe);
+    }
+
+    return $written !== false;
+}
+
 it('leaves its own values alone when saving, and saves the same file again', function () {
     // save() used to hide each namespace separator behind a marker and write the
     // result back through set(). The FILE was correct, so this was invisible
@@ -334,8 +354,12 @@ it('leaves the existing configuration in place when it cannot be written', funct
     chmod(dirname($path), 0555);
 
     try {
-        if (is_writable(dirname($path))) {
-            $this->markTestSkipped('The config directory could not be made read-only here.');
+        if (directoryStillAcceptsWrites(dirname($path))) {
+            // Not a permission flag but an actual write. is_writable() reports
+            // false for a Windows directory carrying the read-only attribute
+            // even though files can still be created in it, so asking the flag
+            // let this run there against a save that had every right to succeed.
+            $this->markTestSkipped('Writes to the config directory still succeed after chmod here.');
         }
 
         expect(fn () => $config->save())->toThrow(RuntimeException::class);
