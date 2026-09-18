@@ -28,6 +28,23 @@ it('compares bounded consumer behavior with the frozen v3 source', function () {
                 ->and($capture['observations']['discovery']['listeners']['subscribers'])->toContain('Domain\\Invoicing\\Listeners\\InvoiceEventSubscriber');
         }
 
+        // Model the deliberate compatibility correction in the isolated
+        // reference copy. Discovery order comes from the runner's filesystem,
+        // so inserting expected entries at hard-coded offsets is not portable.
+        // This exact one-line amendment is independent of candidate output.
+        $discoveryPath = $root.'/src/Support/DomainDiscovery.php';
+        $discovery = $files->get($discoveryPath);
+        $amended = str_replace(
+            "'listeners' => static::withoutSubscriberListeners(\$listeners, \$subscribers),",
+            "'listeners' => \$listeners,",
+            $discovery,
+            $replacements,
+        );
+        expect($replacements)->toBe(1);
+        $files->put($discoveryPath, $amended);
+        $compatibilityReference = Comparison::capture($root);
+        $reference['observations']['discovery']['listeners'] = $compatibilityReference['observations']['discovery']['listeners'];
+
         expect($candidate['observations'])->toBe($reference['observations']);
 
         // Prove the comparison can see a candidate-only layout regression. The

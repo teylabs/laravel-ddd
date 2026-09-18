@@ -103,7 +103,7 @@ class DomainDiscovery
             ->toArray();
 
         return [
-            'listeners' => static::withoutSubscriberListeners($listeners, $subscribers),
+            'listeners' => $listeners,
             'subscribers' => $subscribers,
         ];
     }
