@@ -13,6 +13,7 @@ Built by [Jasper Tey](https://github.com/jaspertey) at [Teylabs](https://teylabs
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [AI-assisted development](#ai-assisted-development)
 - [Available commands](#available-commands)
 - [Advanced usage](#advanced-usage)
 - [Customizing stubs](#customizing-stubs)
@@ -91,6 +92,22 @@ php artisan ddd:{object} {domain}:{name}
 # prompt for it (with auto-completion)
 php artisan ddd:{object} {name}
 ```
+
+## AI-assisted development
+
+Laravel-DDD includes a package-maintained [Laravel Boost](https://laravel.com/docs/boost) skill to help your AI assistant work with your configured layers, generators, stubs, and discovery settings. It teaches package conventions while respecting your application's layout.
+
+In an application using a Boost version with third-party skill support, run:
+
+```bash
+php artisan boost:install
+```
+
+Select guidelines and skills, choose `tey/laravel-ddd` when prompted for third-party packages, and select your preferred agent. The package supplies a small guideline plus the on-demand `laravel-ddd-development` skill. Boost is optional and is installed in your application, not required by Laravel-DDD.
+
+After updating Laravel-DDD, run `php artisan boost:update` to refresh previously selected resources. To select the package in an existing Boost installation, rerun `boost:install`.
+
+See the [skill source](resources/boost/skills/laravel-ddd-development/SKILL.md) for its scope. This guidance ships with the package version you install; it does not imply that Laravel-DDD documentation is indexed by Boost's hosted documentation search.
 
 ## Available Commands
 ### Generators
