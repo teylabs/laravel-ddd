@@ -319,10 +319,88 @@ it('keeps a custom namespace key alongside overridden and default ones', functio
         ->and($config['namespaces'])->toHaveKeys(array_keys($latest['namespaces']));
 });
 
+it('never hands a whole collection to a resolve override written for scalars', function () {
+    // resolve() has only ever seen leaf values, so an override may legitimately
+    // be typed for one. Routing every array through mergeArray() must not leak a
+    // collection into it — including for a consumer-owned list or layers, which
+    // are returned as given rather than merged.
+    $path = config_path('ddd.php');
+
+    File::ensureDirectoryExists(dirname($path));
+    file_put_contents($path, '<?php return '.var_export([
+        'layers' => ['app/Support' => 'App\Support'],
+        'application_objects' => ['controller'],
+        'domain_namespace' => 'Domain',
+    ], true).';');
+
+    $config = new class($path) extends ConfigManager
+    {
+        public array $resolved = [];
+
+        public function resolve($path, $value)
+        {
+            // Typed as a scalar override would be in practice. Before this, a
+            // consumer-owned collection arrived here as an array and this threw.
+            if (is_array($value)) {
+                throw new InvalidArgumentException(
+                    'resolve() was handed an array for '.implode('.', Arr::wrap($path))
+                );
+            }
+
+            $this->resolved[] = implode('.', Arr::wrap($path));
+
+            return parent::resolve($path, $value);
+        }
+    };
+
+    $config->syncWithLatest();
+
+    expect($config->get('layers'))->toBe(['app/Support' => 'App\Support'])
+        ->and($config->get('application_objects'))->toBe(['controller'])
+        ->and($config->get('domain_namespace'))->toBe('Domain');
+
+    // And it was genuinely exercised rather than bypassed entirely.
+    expect($config->resolved)->toContain('domain_namespace');
+
+    unlink($path);
+});
+
+it('round trips a namespace the consumer turned off', function () {
+    // An entry set to null or false survives the merge, and must survive being
+    // written out too: escaping namespace separators used to run str_replace()
+    // over every entry, which turns null and false into an empty string.
+    $path = config_path('ddd.php');
+
+    consumerConfig([
+        'namespaces' => [
+            'model' => 'Custom\Models',
+            'factory' => null,
+            'controller' => false,
+        ],
+    ])->syncWithLatest()->save();
+
+    $saved = include $path;
+
+    expect($saved['namespaces']['model'])->toBe('Custom\Models')
+        ->and($saved['namespaces']['factory'])->toBeNull()
+        ->and($saved['namespaces']['controller'])->toBeFalse();
+
+    // Re-read and written again, so the saved file is a fixed point.
+    (new ConfigManager($path))->syncWithLatest()->save();
+
+    $resaved = include $path;
+
+    expect($resaved['namespaces']['factory'])->toBeNull()
+        ->and($resaved['namespaces']['controller'])->toBeFalse()
+        ->and($resaved['namespaces']['model'])->toBe('Custom\Models');
+
+    unlink($path);
+});
+
 it('round trips namespaces and layers containing backslashes', function () {
     // save() swaps backslashes for a placeholder before exporting and restores
     // them afterwards. Values carrying namespace separators are the ones that
-    // breaks, so they are written, re-read and synced again here.
+    // break, so they are written, re-read and synced again here.
     $path = config_path('ddd.php');
 
     consumerConfig([

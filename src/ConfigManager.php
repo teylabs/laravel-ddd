@@ -62,14 +62,28 @@ class ConfigManager
      * and filled list gaps by numeric position. Now defaults are merged into what
      * is there, and a collection the consumer owns is returned whole.
      */
+    /**
+     * The consumer's value at a path, or the given default.
+     *
+     * Deliberately not resolve(): resolve() has only ever been handed leaf
+     * values — the sync walked down to the scalars and called it there — so an
+     * override written against that contract can reasonably expect a scalar,
+     * and handing it a whole collection would break it. mergeArray() is the
+     * hook for arrays, and it is still the one that classifies and merges them.
+     */
+    protected function lookup($path, mixed $default): mixed
+    {
+        return data_get($this->config, Arr::wrap($path), $default);
+    }
+
     protected function mergeArray($path, $array)
     {
         if ($this->isConsumerOwnedCollection($path, $array)) {
             // Their list, their layers: taken as given, including when empty.
-            return $this->resolve($path, $array);
+            return $this->lookup($path, $array);
         }
 
-        $existing = $this->resolve($path, []);
+        $existing = $this->lookup($path, []);
 
         if (! is_array($existing)) {
             // The consumer replaced the option with something that is not an
@@ -194,7 +208,13 @@ class ConfigManager
             if (is_array($value)) {
                 $array = $value;
                 foreach ($array as $k => $v) {
-                    $array[$k] = str_replace('\\', '[[BACKSLASH]]', $v);
+                    // Only strings. An entry the consumer set to null or false
+                    // is a deliberate value that the merge now preserves, and
+                    // str_replace() would turn it into an empty string on the
+                    // way to the file.
+                    if (is_string($v)) {
+                        $array[$k] = str_replace('\\', '[[BACKSLASH]]', $v);
+                    }
                 }
                 $value = $array;
             }
