@@ -229,7 +229,7 @@ it('keeps a package-owned option the consumer replaced with a non-array', functi
 // options. Both were reachable from a subclass before this change, so both are
 // still called rather than being bypassed by a private rewrite.
 
-it('dispatches scalar options through resolve so a subclass can still intervene', function () {
+it('lets a subclass transform a scalar option through resolve', function () {
     $manager = new class(config_path('ddd.php')) extends ConfigManager
     {
         public array $resolved = [];
@@ -238,38 +238,67 @@ it('dispatches scalar options through resolve so a subclass can still intervene'
         {
             $this->resolved[] = implode('.', Arr::wrap($path));
 
-            return parent::resolve($path, $value);
+            $resolved = parent::resolve($path, $value);
+
+            return $path === 'domain_path' ? 'src/RewrittenBySubclass' : $resolved;
         }
     };
 
-    $manager->syncWithLatest();
+    $config = $manager->syncWithLatest()->get();
 
     expect($manager->resolved)->toContain('domain_path')
         ->and($manager->resolved)->toContain('base_model')
-        // Nested scalars inside a package-owned map are dispatched too.
+        // Scalars nested inside a package-owned map are dispatched too.
         ->and($manager->resolved)->toContain('autoload.providers')
-        ->and($manager->resolved)->toContain('namespaces.model');
+        ->and($manager->resolved)->toContain('namespaces.model')
+        // The override actually changes the result, not just observes it.
+        ->and($config['domain_path'])->toBe('src/RewrittenBySubclass');
 });
 
-it('dispatches array options through mergeArray so a subclass can still intervene', function () {
-    file_put_contents(config_path('ddd.php'), '<?php return '.var_export(['domain_path' => 'src/Domain'], true).';');
+it('lets a subclass transform any array option through mergeArray', function () {
+    file_put_contents(config_path('ddd.php'), '<?php return '.var_export([
+        'application_objects' => ['controller'],
+        'autoload_ignore' => ['Tests'],
+        'layers' => ['Support' => 'src/Support'],
+    ], true).';');
 
     $manager = new class(config_path('ddd.php')) extends ConfigManager
     {
-        public array $mergedPaths = [];
+        public array $merged = [];
+
+        public array $pathTypes = [];
 
         protected function mergeArray($path, $array)
         {
-            $this->mergedPaths[] = implode('.', Arr::wrap($path));
+            $key = implode('.', Arr::wrap($path));
 
-            return parent::mergeArray($path, $array);
+            $this->merged[] = $key;
+            $this->pathTypes[$key] = get_debug_type($path);
+
+            $merged = parent::mergeArray($path, $array);
+
+            // Comparing against a bare string also proves the top-level path is
+            // still dispatched in its original shape.
+            return $path === 'application_objects' ? array_map('strtoupper', $merged) : $merged;
         }
     };
 
-    $manager->syncWithLatest();
+    $config = $manager->syncWithLatest()->get();
 
-    expect($manager->mergedPaths)->toContain('autoload')
-        ->and($manager->mergedPaths)->toContain('namespaces');
+    // Every array option goes through the hook, consumer-owned collections
+    // included — those used to be resolved wholesale without ever reaching it.
+    expect($manager->merged)->toContain('application_objects')
+        ->and($manager->merged)->toContain('autoload_ignore')
+        ->and($manager->merged)->toContain('layers')
+        ->and($manager->merged)->toContain('autoload')
+        ->and($manager->merged)->toContain('namespaces')
+        ->and($manager->pathTypes['application_objects'])->toBe('string')
+        ->and($manager->pathTypes['layers'])->toBe('string')
+        // The override reaches the result for a consumer-owned list.
+        ->and($config['application_objects'])->toBe(['CONTROLLER'])
+        // ...while the options it left alone are untouched.
+        ->and($config['autoload_ignore'])->toBe(['Tests'])
+        ->and($config['layers'])->toBe(['Support' => 'src/Support']);
 });
 
 it('keeps a custom namespace key alongside overridden and default ones', function () {
@@ -302,7 +331,9 @@ it('round trips namespaces and layers containing backslashes', function () {
             'custom_object' => 'Custom\Deeply\Nested',
         ],
         'layers' => [
-            'Support' => 'src/Support',
+            // A nested layer namespace, so this case carries a backslash on both
+            // sides of the map rather than only in the namespaces option.
+            'Support\\Internal' => 'src/Support/Internal',
         ],
         'base_model' => 'Domain\Shared\Models\CustomBaseModel',
         'base_action' => null,
@@ -314,7 +345,7 @@ it('round trips namespaces and layers containing backslashes', function () {
 
     expect($reloaded['namespaces']['model'])->toBe('Custom\Models')
         ->and($reloaded['namespaces']['custom_object'])->toBe('Custom\Deeply\Nested')
-        ->and($reloaded['layers'])->toBe(['Support' => 'src/Support'])
+        ->and($reloaded['layers'])->toBe(['Support\\Internal' => 'src/Support/Internal'])
         ->and($reloaded['base_model'])->toBe('Domain\Shared\Models\CustomBaseModel')
         ->and($reloaded['application_objects'])->toBe(['keepthis'])
         ->and(array_key_exists('base_action', $reloaded))->toBeTrue()

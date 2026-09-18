@@ -51,15 +51,23 @@ class ConfigManager
     /**
      * Merge the package defaults for an array option into what is already there.
      *
-     * Kept as the extension point it has always been — sync still dispatches
-     * every array option through here, and every scalar through resolve(), so a
-     * subclass overriding either still takes part in the merge. What changed is
-     * the direction: this used to rebuild the value from the package's array,
-     * which discarded any key the package did not also define.
+     * Kept as the extension point it has always been. Sync dispatches EVERY array
+     * option through here and every scalar through resolve(), so a subclass
+     * overriding either takes part in the merge exactly as it used to. The path
+     * keeps its original shape too: a string for a top-level option, an array for
+     * anything nested.
+     *
+     * What changed is the direction. This used to rebuild the value from the
+     * package's array, which discarded any key the package did not also define,
+     * and filled list gaps by numeric position. Now defaults are merged into what
+     * is there, and a collection the consumer owns is returned whole.
      */
     protected function mergeArray($path, $array)
     {
-        $path = Arr::wrap($path);
+        if ($this->isConsumerOwnedCollection($path, $array)) {
+            // Their list, their layers: taken as given, including when empty.
+            return $this->resolve($path, $array);
+        }
 
         $existing = $this->resolve($path, []);
 
@@ -72,7 +80,7 @@ class ConfigManager
         $merged = $existing;
 
         foreach ($array as $key => $default) {
-            $merged[$key] = $this->valueFor([...$path, $key], $default);
+            $merged[$key] = $this->valueFor([...Arr::wrap($path), $key], $default);
         }
 
         return $merged;
@@ -80,16 +88,16 @@ class ConfigManager
 
     /**
      * The value an option should end up with after syncing.
+     *
+     * @param  string|array  $path
      */
-    protected function valueFor(array $path, mixed $default): mixed
+    protected function valueFor($path, mixed $default): mixed
     {
-        if (! is_array($default) || $this->isConsumerOwnedCollection($path, $default)) {
-            // resolve() returns what the consumer has, or the default when they
-            // have nothing, so an explicit null, false or empty list survives.
-            return $this->resolve($path, $default);
-        }
-
-        return $this->mergeArray($path, $default);
+        // resolve() returns what the consumer has, or the default when they have
+        // nothing, so an explicit null, false or empty value survives.
+        return is_array($default)
+            ? $this->mergeArray($path, $default)
+            : $this->resolve($path, $default);
     }
 
     /**
@@ -104,12 +112,15 @@ class ConfigManager
      * A list is consumer-owned because its entries carry no identity to merge
      * on: filling gaps could only mean merging by position, which is how
      * removing an entry from application_objects used to reinstate whichever
-     * default sat at that index.
+     * default sat at that index. That positional merging is deliberately gone
+     * and is not reproduced for the sake of matching the old inner calls.
+     *
+     * @param  string|array  $path
      */
-    protected function isConsumerOwnedCollection(array $path, array $default): bool
+    protected function isConsumerOwnedCollection($path, array $default): bool
     {
         return array_is_list($default)
-            || in_array(implode('.', $path), static::CONSUMER_OWNED_KEYS, true);
+            || in_array(implode('.', Arr::wrap($path)), static::CONSUMER_OWNED_KEYS, true);
     }
 
     public function syncWithLatest()
@@ -120,7 +131,9 @@ class ConfigManager
         $fresh = $this->config;
 
         foreach ($this->packageConfig as $key => $default) {
-            $fresh[$key] = $this->valueFor([$key], $default);
+            // The key is passed as a string, the shape a top-level option was
+            // always dispatched with.
+            $fresh[$key] = $this->valueFor($key, $default);
         }
 
         $this->config = $fresh;
