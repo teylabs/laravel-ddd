@@ -499,7 +499,12 @@ Removing or commenting out the block does **not** disable discovery: missing con
 <a name="autoloading-in-production"></a>
 
 ## Autoloading in Production
+
 In production, you should cache the autoload manifests using the `ddd:optimize` command as part of your application's deployment process. This will speed up the auto-discovery and registration of domain providers and commands. The `ddd:clear` command may be used to clear the cache if needed. If you are already running `php artisan optimize`, `ddd:optimize` will be included within that pipeline. The framework's `optimize` and `optimize:clear` commands will automatically invoke `ddd:optimize` and `ddd:clear` respectively.
+
+If a cached provider, command, listener or subscriber class disappears, the package rediscovers that category in memory. Missing listener handlers and subscriber methods also trigger recovery, while preserving Laravel's invokable-listener fallback. Recovery does not rewrite the cache: continue rebuilding it during deployment. Changes to event types or newly added objects require a cache rebuild.
+
+Deleted files in an optimized Composer classmap are detected before loading. Composer's `--classmap-authoritative` mode still requires an autoload rebuild before renamed classes can be discovered; moving a file while keeping its class name may also require rebuilding Composer's map. Restart long-running workers after code changes.
 
 <a name="config-file"></a>
 

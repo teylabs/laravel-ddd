@@ -169,3 +169,43 @@ it('propagates errors inside an existing Composer mapped file', function () {
         rmdir($directory);
     }
 });
+
+it('rediscovers a cached listener whose handler was removed', function ($listener) {
+    $manifest = ['listeners' => [InvoiceTracked::class => [$listener]], 'subscribers' => []];
+    DomainCache::set('domain-listeners', $manifest);
+    (new AutoloadManager)->run();
+    Event::dispatch($event = new InvoiceTracked);
+    expect($event->calls)->toContain('domain-listener')
+        ->and(DomainCache::get('domain-listeners'))->toBe($manifest);
+})->with([
+    'method string' => ['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener@handleRemoved'],
+    'method array' => [['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener', 'handleRemoved']],
+]);
+
+it('rediscovers a subscriber whose subscribe method was removed', function () {
+    DomainCache::set('domain-listeners', [
+        'listeners' => [],
+        'subscribers' => ['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener'],
+    ]);
+    (new AutoloadManager)->run();
+    Event::dispatch($event = new InvoiceTracked);
+    expect($event->calls)->toContain('domain-listener');
+});
+
+it('preserves the framework invokable fallback for cached handlers', function () {
+    DomainCache::set('domain-listeners', [
+        'listeners' => [InvoiceTracked::class => [CachedInvokableListener::class.'@removed']],
+        'subscribers' => [],
+    ]);
+    (new AutoloadManager)->run();
+    Event::dispatch($event = new InvoiceTracked);
+    expect($event->calls)->toBe(['cached-invokable']);
+});
+
+class CachedInvokableListener
+{
+    public function __invoke(InvoiceTracked $event): void
+    {
+        $event->calls[] = 'cached-invokable';
+    }
+}

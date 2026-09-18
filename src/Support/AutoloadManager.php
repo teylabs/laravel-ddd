@@ -279,7 +279,8 @@ class AutoloadManager
             }
         }
 
-        if (DomainCache::has('domain-listeners') && ! $this->cachedClassesExist($classes)) {
+        if (DomainCache::has('domain-listeners')
+            && (! $this->cachedClassesExist($classes) || ! $this->cachedListenerMethodsExist($cached))) {
             $cached = $this->discoverListeners();
         }
 
@@ -294,6 +295,37 @@ class AutoloadManager
             );
 
         return $this;
+    }
+
+    private function cachedListenerMethodsExist(array $manifest): bool
+    {
+        foreach ($manifest['subscribers'] ?? [] as $subscriber) {
+            if (! method_exists($subscriber, 'subscribe') && ! method_exists($subscriber, '__call')) {
+                return false;
+            }
+        }
+
+        foreach ($manifest['listeners'] ?? [] as $listeners) {
+            foreach ($listeners as $listener) {
+                if (is_array($listener)) {
+                    [$class, $method] = $listener;
+                } elseif (is_string($listener)) {
+                    [$class, $method] = array_pad(explode('@', $listener, 2), 2, 'handle');
+                } else {
+                    continue;
+                }
+
+                // Laravel falls back to __invoke when the named handler is
+                // absent. Do not instantiate listeners just to validate them.
+                if (! method_exists($class, $method)
+                    && ! method_exists($class, '__invoke')
+                    && ! method_exists($class, '__call')) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
