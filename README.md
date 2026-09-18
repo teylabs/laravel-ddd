@@ -7,7 +7,7 @@
 
 Laravel-DDD is a toolkit to support domain driven design (DDD) in Laravel applications. One of the pain points when adopting DDD is the inability to use Laravel's native `make` commands to generate objects outside the `App\*` namespace. This package aims to fill the gaps by providing equivalent commands such as `ddd:model`, `ddd:dto`, `ddd:view-model` and many more.
 
-Maintained by [Jasper Tey](https://github.com/jaspertey) at [Teylabs](https://teylabs.com).
+Built by [Jasper Tey](https://github.com/jaspertey) at [Teylabs](https://teylabs.com), and made better by [our contributors](https://github.com/teylabs/laravel-ddd/graphs/contributors).
 
 ## Contents
 
