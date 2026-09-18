@@ -144,6 +144,19 @@ it('imports request classes that exist where the controller says they are', func
             'app/Modules/Invoicing/Requests/Billing/UpdateInvoiceRequest.php',
         ],
     ],
+    // A leading slash means the name is absolute: the object sits at the layer
+    // root rather than under its type's namespace segment. The forwarded
+    // request keeps that slash, so it is absolute too — and asking for the
+    // reference without saying so put Requests\ back into the import while the
+    // file was written to Custom\.
+    'absolute controller name' => [
+        '/Custom/InvoiceController',
+        'app/Modules/Invoicing/Custom/InvoiceController.php',
+        [
+            'app/Modules/Invoicing/Custom/StoreInvoiceRequest.php',
+            'app/Modules/Invoicing/Custom/UpdateInvoiceRequest.php',
+        ],
+    ],
 ]);
 
 it('imports request classes from a configured request namespace in another layer', function () {
@@ -173,6 +186,33 @@ it('imports request classes from a configured request namespace in another layer
     expect(importsOf($controllerPath))
         ->toContain('Domain\Invoicing\Http\FormRequests\StorePaymentRequest')
         ->toContain('Domain\Invoicing\Http\FormRequests\UpdatePaymentRequest');
+});
+
+it('imports absolute request references from a configured namespace in another layer', function () {
+    // Both things that could mask the absolute flag are changed at once: the
+    // requests move to the domain layer, and their type namespace is renamed.
+    // An absolute name ignores that segment entirely, so a reference that
+    // happens to match here cannot be coming from the configured namespace.
+    Config::set('ddd.application_objects', ['controller']);
+    Config::set('ddd.namespaces.request', 'Http/FormRequests');
+
+    $controllerPath = 'app/Modules/Invoicing/Custom/PaymentController.php';
+
+    $this->artisan('ddd:controller', [
+        'name' => '/Custom/PaymentController',
+        '--domain' => 'Invoicing',
+        '--model' => 'Payment',
+        '--requests' => true,
+    ])->assertSuccessful()->execute();
+
+    expectRequestImportsToMatch($controllerPath, [
+        'src/Domain/Invoicing/Custom/StorePaymentRequest.php',
+        'src/Domain/Invoicing/Custom/UpdatePaymentRequest.php',
+    ]);
+
+    expect(importsOf($controllerPath))
+        ->toContain('Domain\Invoicing\Custom\StorePaymentRequest')
+        ->toContain('Domain\Invoicing\Custom\UpdatePaymentRequest');
 });
 
 it('resolves request references through a published controller stub', function () {
