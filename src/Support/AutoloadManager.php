@@ -3,6 +3,7 @@
 namespace Tey\LaravelDDD\Support;
 
 use Closure;
+use Composer\Autoload\ClassLoader;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Application;
@@ -142,6 +143,10 @@ class AutoloadManager
             ? DomainCache::get('domain-providers')
             : $this->discoverProviders();
 
+        if (DomainCache::has('domain-providers') && ! $this->cachedClassesExist($providers)) {
+            $providers = $this->discoverProviders();
+        }
+
         foreach ($providers as $provider) {
             static::$registeredProviders[$provider] = $provider;
         }
@@ -154,6 +159,10 @@ class AutoloadManager
         $commands = DomainCache::has('domain-commands')
             ? DomainCache::get('domain-commands')
             : $this->discoverCommands();
+
+        if (DomainCache::has('domain-commands') && ! $this->cachedClassesExist($commands)) {
+            $commands = $this->discoverCommands();
+        }
 
         foreach ($commands as $command) {
             static::$registeredCommands[$command] = $command;
@@ -259,6 +268,22 @@ class AutoloadManager
             ? DomainCache::get('domain-listeners')
             : $this->discoverListeners();
 
+        $classes = $cached['subscribers'] ?? [];
+
+        foreach ($cached['listeners'] ?? [] as $listeners) {
+            foreach ($listeners as $listener) {
+                $class = is_array($listener) ? $listener[0] : $listener;
+                if (is_string($class)) {
+                    $classes[] = Str::before($class, '@');
+                }
+            }
+        }
+
+        if (DomainCache::has('domain-listeners')
+            && (! $this->cachedClassesExist($classes) || ! $this->cachedListenerMethodsExist($cached))) {
+            $cached = $this->discoverListeners();
+        }
+
         // Normalize older manifests too: subscriber handlers belong to subscribe().
         collect(DomainDiscovery::withoutSubscriberListeners($cached['listeners'] ?? [], $cached['subscribers'] ?? []))
             ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => static::$registeredListeners[$event][] = $listener
@@ -270,6 +295,65 @@ class AutoloadManager
             );
 
         return $this;
+    }
+
+    private function cachedListenerMethodsExist(array $manifest): bool
+    {
+        foreach ($manifest['subscribers'] ?? [] as $subscriber) {
+            if (! method_exists($subscriber, 'subscribe') && ! method_exists($subscriber, '__call')) {
+                return false;
+            }
+        }
+
+        foreach ($manifest['listeners'] ?? [] as $listeners) {
+            foreach ($listeners as $listener) {
+                if (is_array($listener)) {
+                    [$class, $method] = $listener;
+                } elseif (is_string($listener)) {
+                    [$class, $method] = array_pad(explode('@', $listener, 2), 2, 'handle');
+                } else {
+                    continue;
+                }
+
+                // Laravel falls back to __invoke when the named handler is
+                // absent. Do not instantiate listeners just to validate them.
+                if (! method_exists($class, $method)
+                    && ! method_exists($class, '__invoke')
+                    && ! method_exists($class, '__call')) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * A removed class invalidates its whole inventory so renamed replacements
+     * are discovered too. Recovery is in memory: boot must not write to a
+     * deployment's cache directory. Autoload errors deliberately propagate.
+     */
+    private function cachedClassesExist(array $classes): bool
+    {
+        foreach (array_unique($classes) as $class) {
+            // Optimized Composer maps can retain deleted paths after an SSH
+            // hotfix. Avoid executing that stale include; errors inside files
+            // that still exist must continue to propagate normally.
+            if (! class_exists($class, false)) {
+                foreach (ClassLoader::getRegisteredLoaders() as $loader) {
+                    $file = $loader->findFile($class);
+                    if ($file !== false && ! is_file($file)) {
+                        return false;
+                    }
+                }
+            }
+
+            if (! class_exists($class)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function finder($paths)
