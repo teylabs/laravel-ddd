@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Tey\LaravelDDD\ConfigManager;
@@ -184,6 +185,146 @@ it('does not render an unknown top-level key when saving', function () {
     consumerConfig(['some_extension_key' => ['a' => 1]])->syncWithLatest()->save();
 
     expect(array_key_exists('some_extension_key', include $path))->toBeFalse();
+
+    unlink($path);
+});
+
+it('still fills a package-owned map the consumer emptied', function () {
+    // An empty array is a list as far as PHP is concerned, so classifying from
+    // the consumer's value would call `autoload => []` consumer-owned and leave
+    // it empty forever — no newly supported option would ever appear. The
+    // decision is made from the package's default instead.
+    $latest = require DDD::packagePath('config/ddd.php');
+
+    $config = consumerConfig([
+        'autoload' => [],
+        'namespaces' => [],
+    ])->syncWithLatest()->get();
+
+    expect($config['autoload'])->toBe($latest['autoload'])
+        ->and($config['namespaces'])->toBe($latest['namespaces']);
+});
+
+it('leaves an emptied consumer-owned collection empty', function () {
+    // The counterpart: lists and layers are the consumer's, so emptying them is
+    // a decision that survives.
+    $config = consumerConfig([
+        'autoload_ignore' => [],
+        'application_objects' => [],
+        'layers' => [],
+    ])->syncWithLatest()->get();
+
+    expect($config['autoload_ignore'])->toBe([])
+        ->and($config['application_objects'])->toBe([])
+        ->and($config['layers'])->toBe([]);
+});
+
+it('keeps a package-owned option the consumer replaced with a non-array', function () {
+    $config = consumerConfig(['autoload' => false])->syncWithLatest()->get();
+
+    expect($config['autoload'])->toBeFalse();
+});
+
+// The merge dispatches through resolve() for scalars and mergeArray() for array
+// options. Both were reachable from a subclass before this change, so both are
+// still called rather than being bypassed by a private rewrite.
+
+it('dispatches scalar options through resolve so a subclass can still intervene', function () {
+    $manager = new class(config_path('ddd.php')) extends ConfigManager
+    {
+        public array $resolved = [];
+
+        public function resolve($path, $value)
+        {
+            $this->resolved[] = implode('.', Arr::wrap($path));
+
+            return parent::resolve($path, $value);
+        }
+    };
+
+    $manager->syncWithLatest();
+
+    expect($manager->resolved)->toContain('domain_path')
+        ->and($manager->resolved)->toContain('base_model')
+        // Nested scalars inside a package-owned map are dispatched too.
+        ->and($manager->resolved)->toContain('autoload.providers')
+        ->and($manager->resolved)->toContain('namespaces.model');
+});
+
+it('dispatches array options through mergeArray so a subclass can still intervene', function () {
+    file_put_contents(config_path('ddd.php'), '<?php return '.var_export(['domain_path' => 'src/Domain'], true).';');
+
+    $manager = new class(config_path('ddd.php')) extends ConfigManager
+    {
+        public array $mergedPaths = [];
+
+        protected function mergeArray($path, $array)
+        {
+            $this->mergedPaths[] = implode('.', Arr::wrap($path));
+
+            return parent::mergeArray($path, $array);
+        }
+    };
+
+    $manager->syncWithLatest();
+
+    expect($manager->mergedPaths)->toContain('autoload')
+        ->and($manager->mergedPaths)->toContain('namespaces');
+});
+
+it('keeps a custom namespace key alongside overridden and default ones', function () {
+    // An extra key inside a package-owned map: the package does not define
+    // `custom_object`, so filling missing defaults must not drop it.
+    $latest = require DDD::packagePath('config/ddd.php');
+
+    $config = consumerConfig([
+        'namespaces' => [
+            'model' => 'CustomModels',
+            'custom_object' => 'CustomObjects',
+        ],
+    ])->syncWithLatest()->get();
+
+    expect($config['namespaces']['custom_object'])->toBe('CustomObjects')
+        ->and($config['namespaces']['model'])->toBe('CustomModels')
+        ->and($config['namespaces']['factory'])->toBe($latest['namespaces']['factory'])
+        ->and($config['namespaces'])->toHaveKeys(array_keys($latest['namespaces']));
+});
+
+it('round trips namespaces and layers containing backslashes', function () {
+    // save() swaps backslashes for a placeholder before exporting and restores
+    // them afterwards. Values carrying namespace separators are the ones that
+    // breaks, so they are written, re-read and synced again here.
+    $path = config_path('ddd.php');
+
+    consumerConfig([
+        'namespaces' => [
+            'model' => 'Custom\Models',
+            'custom_object' => 'Custom\Deeply\Nested',
+        ],
+        'layers' => [
+            'Support' => 'src/Support',
+        ],
+        'base_model' => 'Domain\Shared\Models\CustomBaseModel',
+        'base_action' => null,
+        'base_dto' => false,
+        'application_objects' => ['keepthis'],
+    ])->syncWithLatest()->save();
+
+    $reloaded = include $path;
+
+    expect($reloaded['namespaces']['model'])->toBe('Custom\Models')
+        ->and($reloaded['namespaces']['custom_object'])->toBe('Custom\Deeply\Nested')
+        ->and($reloaded['layers'])->toBe(['Support' => 'src/Support'])
+        ->and($reloaded['base_model'])->toBe('Domain\Shared\Models\CustomBaseModel')
+        ->and($reloaded['application_objects'])->toBe(['keepthis'])
+        ->and(array_key_exists('base_action', $reloaded))->toBeTrue()
+        ->and($reloaded['base_action'])->toBeNull()
+        ->and($reloaded['base_dto'])->toBeFalse();
+
+    // Syncing the saved file again must not disturb any of it.
+    (new ConfigManager($path))->syncWithLatest()->save();
+
+    expect(include $path)->toBe($reloaded);
 
     unlink($path);
 });

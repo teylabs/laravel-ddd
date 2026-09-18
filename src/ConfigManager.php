@@ -29,7 +29,7 @@ class ConfigManager
     /**
      * Top-level keys whose value is a collection the consumer owns outright.
      *
-     * Most maps in this config have a key set the package defines — autoload and
+     * Most maps here have a key set the package defines — autoload and
      * namespaces list every option the package supports, so a new one has to
      * appear on sync. `layers` is different: the documentation describes it as
      * "additional top-level namespaces and paths", the entries are the
@@ -49,64 +49,81 @@ class ConfigManager
     }
 
     /**
-     * Add anything new from the package without disturbing what is already there.
+     * Merge the package defaults for an array option into what is already there.
      *
-     * The merge walks the CONSUMER's config and fills in default keys it does not
-     * have. Walking the package's config instead — as this used to — silently
-     * dropped every consumer key the package did not also define, so a custom
-     * layer or an unrecognised top-level key disappeared on sync.
+     * Kept as the extension point it has always been — sync still dispatches
+     * every array option through here, and every scalar through resolve(), so a
+     * subclass overriding either still takes part in the merge. What changed is
+     * the direction: this used to rebuild the value from the package's array,
+     * which discarded any key the package did not also define.
      */
-    protected function mergeWithDefaults(array $config, array $defaults, array $path = []): array
+    protected function mergeArray($path, $array)
     {
-        $merged = $config;
+        $path = Arr::wrap($path);
 
-        foreach ($defaults as $key => $default) {
-            if (! array_key_exists($key, $config)) {
-                $merged[$key] = $default;
+        $existing = $this->resolve($path, []);
 
-                continue;
-            }
+        if (! is_array($existing)) {
+            // The consumer replaced the option with something that is not an
+            // array at all. That is their decision; leave it alone.
+            return $existing;
+        }
 
-            $value = $config[$key];
+        $merged = $existing;
 
-            if ($this->isConsumerOwned([...$path, $key], $value, $default)) {
-                continue;
-            }
-
-            $merged[$key] = $this->mergeWithDefaults($value, $default, [...$path, $key]);
+        foreach ($array as $key => $default) {
+            $merged[$key] = $this->valueFor([...$path, $key], $default);
         }
 
         return $merged;
     }
 
     /**
-     * Whether a value the consumer supplied should be kept exactly as it is.
-     *
-     * A list is theirs entirely, empty included: the entries carry no identity of
-     * their own, so filling gaps from the package could only mean merging by
-     * numeric position. That is how removing an entry from application_objects
-     * used to reinstate whichever default happened to sit at that index, and how
-     * emptying autoload_ignore used to hand the defaults straight back.
-     *
-     * Anything that is not an array on both sides is kept as given too, so an
-     * explicit null or false survives.
+     * The value an option should end up with after syncing.
      */
-    protected function isConsumerOwned(array $path, mixed $value, mixed $default): bool
+    protected function valueFor(array $path, mixed $default): mixed
     {
-        if (! is_array($value) || ! is_array($default)) {
-            return true;
+        if (! is_array($default) || $this->isConsumerOwnedCollection($path, $default)) {
+            // resolve() returns what the consumer has, or the default when they
+            // have nothing, so an explicit null, false or empty list survives.
+            return $this->resolve($path, $default);
         }
 
-        if (array_is_list($value) || array_is_list($default)) {
-            return true;
-        }
+        return $this->mergeArray($path, $default);
+    }
 
-        return in_array(implode('.', $path), static::CONSUMER_OWNED_KEYS, true);
+    /**
+     * Whether an option is a collection the consumer owns rather than a map of
+     * package-defined keys.
+     *
+     * Decided from the PACKAGE's default, never from what the consumer happens
+     * to hold. Asking array_is_list() of the consumer's value would call an
+     * empty `autoload => []` a list — empty arrays are lists in PHP — and that
+     * option would then never receive a newly supported key.
+     *
+     * A list is consumer-owned because its entries carry no identity to merge
+     * on: filling gaps could only mean merging by position, which is how
+     * removing an entry from application_objects used to reinstate whichever
+     * default sat at that index.
+     */
+    protected function isConsumerOwnedCollection(array $path, array $default): bool
+    {
+        return array_is_list($default)
+            || in_array(implode('.', $path), static::CONSUMER_OWNED_KEYS, true);
     }
 
     public function syncWithLatest()
     {
-        $this->config = $this->mergeWithDefaults($this->config, $this->packageConfig);
+        // Start from what the consumer has, so a key the package does not define
+        // is carried over rather than dropped, then bring each package option up
+        // to date through the hooks above.
+        $fresh = $this->config;
+
+        foreach ($this->packageConfig as $key => $default) {
+            $fresh[$key] = $this->valueFor([$key], $default);
+        }
+
+        $this->config = $fresh;
 
         return $this;
     }
