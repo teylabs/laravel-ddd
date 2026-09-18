@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\File;
 
 it('can publish config file', function () {
     $expectedPath = base_path('config/ddd.php');
@@ -21,20 +20,3 @@ it('can publish config file', function () {
     // Delete it
     unlink($expectedPath);
 });
-
-it('can publish stubs', function () {
-    $dir = base_path('stubs/ddd');
-
-    if (File::exists($dir)) {
-        File::deleteDirectory($dir);
-    }
-
-    expect(File::exists($dir))->toBeFalse();
-
-    Artisan::call('vendor:publish', [
-        '--tag' => 'ddd-stubs',
-    ]);
-
-    expect(File::exists($dir))->toBeTrue();
-    expect(File::isEmptyDirectory($dir))->toBeFalse();
-})->markTestSkipped('Deprecated');

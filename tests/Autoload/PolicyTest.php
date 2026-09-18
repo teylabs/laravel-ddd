@@ -45,17 +45,23 @@ describe('when ddd.autoload.policies = true', function () {
         $mock->run();
     });
 
-    it('can resolve the policies', function () {
+    it('resolves policies across domain and conventional layer layouts', function () {
         config()->set('ddd.autoload.policies', true);
 
-        $mock = AutoloadManager::partialMock();
-        $mock->run();
+        $manager = new AutoloadManager;
+        $manager->run();
 
         foreach ($this->policies as $class => $expectedPolicy) {
-            $resolvedPolicy = Gate::getPolicyFor($class);
-            expect($mock->getResolvedPolicies())->toHaveKey($class);
+            expect(class_exists($class))->toBeTrue();
+            expect(Gate::getPolicyFor($class))->toBeInstanceOf($expectedPolicy);
         }
-    })->markTestIncomplete('custom layer policies are not yet supported');
+
+        // Domain resolution is tracked; conventional non-domain naming uses
+        // the fallback and must not be mistaken for domain-object resolution.
+        expect($manager->getResolvedPolicies())->toBe([
+            'Domain\\Invoicing\\Models\\Invoice' => 'Domain\\Invoicing\\Policies\\InvoicePolicy',
+        ]);
+    });
 
     it('gracefully falls back for non-ddd policies', function ($class, $expectedPolicy) {
         config()->set('ddd.autoload.policies', true);
