@@ -12,6 +12,8 @@ dependencies and the same consumer driver and fixtures. A prepended production
 loader selects the package implementation before package classes load; reflection
 checks the provider, blueprint and autoloader paths. The baseline's source,
 configuration and package stubs come from the pinned archive, not candidate code.
+The temporary package loader is suspended while the fixture root remaps Composer;
+guards check Composer's fixture paths and actual loaded fixture-class locations.
 Nothing is downloaded, installed or rewritten in the reference checkout. Full git
 history is fetched in matrix CI; a missing baseline object is a failure locally.
 

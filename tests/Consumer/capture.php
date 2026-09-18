@@ -12,7 +12,7 @@ use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\GeneratorBlueprint;
 use Tey\LaravelDDD\Tests\FixtureApplication;
 
-require dirname(__DIR__, 2).'/vendor/autoload.php';
+$composerLoader = require dirname(__DIR__, 2).'/vendor/autoload.php';
 
 $packageRoot = realpath($argv[1] ?? '');
 if ($packageRoot === false || ! is_file($packageRoot.'/src/LaravelDDDServiceProvider.php')) {
@@ -44,20 +44,48 @@ $consumerConfig = [
     'ddd.base_model' => null,
 ];
 
-$root = FixtureApplication::basePath();
-$app = TestbenchApplication::create($root, static function ($app) use ($consumerConfig) {
-    $app->booting(static fn () => $app['config']->set($consumerConfig));
-}, ['extra' => ['providers' => [LodyServiceProvider::class, LaravelDDDServiceProvider::class]]]);
-
+$app = null;
 try {
+    // Let FixtureApplication snapshot/remap the real Composer loader. Restore
+    // package precedence even if opening the application root throws.
+    $packageLoader->unregister();
+    try {
+        $root = FixtureApplication::basePath();
+    } finally {
+        $packageLoader->register(true);
+    }
+    // Both the primary fixture resolution and Composer's fallback must stay inside
+    // the owned root. A second package loader must not leave vendor mappings live.
+    $fixture = dirname(__DIR__).'/.skeleton';
+    $fixtureMappings = json_decode(file_get_contents($fixture.'/composer.json'), true, flags: JSON_THROW_ON_ERROR)['autoload']['psr-4'];
+    foreach ($fixtureMappings as $prefix => $relative) {
+        $expected = $root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, rtrim($relative, '/'));
+        if (($composerLoader->getPrefixesPsr4()[$prefix] ?? []) !== [$expected]) {
+            throw new RuntimeException("Composer still has a fixture fallback outside the owned root: {$prefix}");
+        }
+    }
+
+    $app = TestbenchApplication::create($root, static function ($app) use ($consumerConfig) {
+        $app->booting(static fn () => $app['config']->set($consumerConfig));
+    }, ['extra' => ['providers' => [LodyServiceProvider::class, LaravelDDDServiceProvider::class]]]);
+
     $root = base_path();
     $normalize = static fn (string $value): string => str_replace(["\r\n", $root], ["\n", '<APP>'], $value);
-    $fixture = dirname(__DIR__).'/.skeleton';
     File::copyDirectory($fixture.'/src', base_path('src'));
     File::copy($fixture.'/composer.json', base_path('composer.json'));
     (new Process(['composer', 'dump-autoload', '--no-scripts', '--no-interaction'], $root))->mustRun();
     File::ensureDirectoryExists(app_path('Http/Controllers'));
     File::copy($fixture.'/app/Http/Controllers/Controller.php', app_path('Http/Controllers/Controller.php'));
+
+    foreach ([
+        'Domain\\Invoicing\\Models\\Invoice' => 'src/Domain/Invoicing/Models/Invoice.php',
+        'Application\\Commands\\ApplicationSync' => 'src/Application/Commands/ApplicationSync.php',
+        'Infrastructure\\Providers\\InfrastructureServiceProvider' => 'src/Infrastructure/Providers/InfrastructureServiceProvider.php',
+    ] as $class => $relative) {
+        if (realpath((new ReflectionClass($class))->getFileName()) !== realpath($root.'/'.$relative)) {
+            throw new RuntimeException("Fixture class escaped the owned root: {$class}");
+        }
+    }
 
     $commands = [
         ['ddd:class', ['name' => 'Probe', '--domain' => 'Comparison']],
@@ -101,6 +129,13 @@ try {
         'observations' => $observations,
     ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
 } finally {
-    $app->terminate();
-    FixtureApplication::restore();
+    try {
+        $app?->terminate();
+    } finally {
+        try {
+            FixtureApplication::restore();
+        } finally {
+            $packageLoader->unregister();
+        }
+    }
 }
