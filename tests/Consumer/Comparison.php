@@ -13,14 +13,19 @@ final class Comparison
 
     public static function archive(string $destination): void
     {
+        if (! class_exists(ZipArchive::class)) {
+            throw new RuntimeException('The frozen consumer comparison requires the PHP zip extension.');
+        }
+
         $zipPath = $destination.'.zip';
         $process = new Process(['git', 'archive', '--format=zip', '--output='.$zipPath, self::BASELINE], dirname(__DIR__, 2));
-        $process->mustRun();
 
         $zip = new ZipArchive;
         $opened = false;
 
         try {
+            $process->mustRun();
+
             if ($zip->open($zipPath) !== true) {
                 throw new RuntimeException('Cannot open frozen consumer baseline archive.');
             }
@@ -30,10 +35,13 @@ final class Comparison
                 throw new RuntimeException('Cannot extract frozen consumer baseline.');
             }
         } finally {
-            if ($opened) {
-                $zip->close();
+            try {
+                if ($opened) {
+                    $zip->close();
+                }
+            } finally {
+                (new Filesystem)->delete($zipPath);
             }
-            (new Filesystem)->delete($zipPath);
         }
     }
 

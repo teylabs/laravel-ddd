@@ -73,7 +73,11 @@ try {
     $normalize = static fn (string $value): string => str_replace(["\r\n", $root], ["\n", '<APP>'], $value);
     File::copyDirectory($fixture.'/src', base_path('src'));
     File::copy($fixture.'/composer.json', base_path('composer.json'));
-    (new Process(['composer', 'dump-autoload', '--no-scripts', '--no-interaction'], $root))->mustRun();
+    // The parent capture process owns the overall 120-second deadline.
+    (new Process(['composer', 'dump-autoload', '--no-scripts', '--no-interaction'], $root))
+        ->setEnv(['COMPOSER_MEMORY_LIMIT' => '-1'])
+        ->setTimeout(null)
+        ->mustRun();
     File::ensureDirectoryExists(app_path('Http/Controllers'));
     File::copy($fixture.'/app/Http/Controllers/Controller.php', app_path('Http/Controllers/Controller.php'));
 
