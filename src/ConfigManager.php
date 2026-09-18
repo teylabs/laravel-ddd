@@ -26,7 +26,15 @@ class ConfigManager
         // Read the resolved path, not the nullable argument: constructed without
         // one, this used to fall back to package defaults even when the consumer
         // had a config file sitting exactly where configPath points.
-        $this->config = file_exists($this->configPath) ? require $this->configPath : $this->packageConfig;
+        //
+        // is_file() rather than file_exists(): it asks whether there is a
+        // regular file to read, following a symbolic link to its target. On
+        // Windows file_exists() answers about the LINK, so a link whose target
+        // is missing sent this straight into a require of a file that is not
+        // there — a fatal error just from constructing the manager. Now a link
+        // that leads nowhere falls back to the package defaults here, and save()
+        // refuses it explicitly.
+        $this->config = is_file($this->configPath) ? require $this->configPath : $this->packageConfig;
 
         $this->stub = file_get_contents(DDD::packagePath('config/ddd.php.stub'));
     }

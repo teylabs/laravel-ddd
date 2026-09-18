@@ -601,12 +601,17 @@ it('writes through a symlinked configuration file rather than replacing the link
         $relative ? dirname($link) : null,
     );
 
-    $linkTargetBefore = readlink($link);
+    // What the link resolves to, which every platform can answer. PHP's
+    // readlink() fails with ERROR_INVALID_NAME on a Windows link that stores a
+    // relative target, so the raw form is compared further down only where it
+    // can be read at all.
+    $resolvedBefore = realpath($link);
+    $rawBefore = @readlink($link);
 
     (new ConfigManager($link))->syncWithLatest()->save();
 
     expect(is_link($link))->toBeTrue("{$description}: the link itself was replaced")
-        ->and(readlink($link))->toBe($linkTargetBefore, "{$description}: the link now points somewhere else")
+        ->and(realpath($link))->toBe($resolvedBefore, "{$description}: the link now resolves elsewhere")
         // Written through the link: the target carries the new contents, and
         // reading the link path gives the same thing.
         ->and((include $target)['base_model'])->toBe('Domain\Shared\Models\Base')
@@ -614,6 +619,12 @@ it('writes through a symlinked configuration file rather than replacing the link
         ->and(include $link)->toBe(include $target)
         ->and(strayFilesBeside($target))->toBe([])
         ->and(strayFilesBeside($link))->toBe([]);
+
+    if (is_string($rawBefore)) {
+        // Where readlink() works, the stronger statement: the target was
+        // preserved exactly as written, relative form and all.
+        expect(readlink($link))->toBe($rawBefore, "{$description}: the stored target changed");
+    }
 
     unlink($link);
     unlink($target);
@@ -699,7 +710,14 @@ it('refuses a symlink whose target does not exist, and leaves the link alone', f
 
     unlink($missing);
 
+    // Constructing it must not blow up either. file_exists() answers about the
+    // LINK on Windows, so a link leading nowhere used to send the constructor
+    // into a require of a file that is not there; is_file() asks about the
+    // target, and a link with none falls back to the package defaults.
     $config = new ConfigManager($link);
+
+    expect($config->get())->toHaveKeys(array_keys(require DDD::packagePath('config/ddd.php')));
+
     $config->syncWithLatest();
 
     expect(fn () => $config->save())->toThrow(RuntimeException::class, 'symbolic link');
