@@ -119,7 +119,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | The base class which generated view models should extend. By default,
-    | generated domain models will extend `Domain\Shared\ViewModels\BaseViewModel`,
+    | generated view models will extend `Domain\Shared\ViewModels\ViewModel`,
     | which will be created if it doesn't already exist.
     |
     */
@@ -142,8 +142,8 @@ return [
     | Autoloading
     |--------------------------------------------------------------------------
     |
-    | Configure whether domain providers, commands, policies, factories,
-    | and migrations should be auto-discovered and registered.
+    | Configure discovery and registration of providers, commands, migrations,
+    | and event listeners, and policy and factory naming resolution.
     |
     */
     'autoload' => [
@@ -161,8 +161,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Folders that should be excluded from PSR-4 class scanning
-    | (auto-discovery of providers, commands, policies, factories,
-    | and listeners), relative to the root of each domain.
+    | (auto-discovery of providers, commands, and listeners),
+    | relative to the root of each domain.
     |
     | This does not affect migration path discovery, which is controlled
     | separately by the autoload.migrations option above.
