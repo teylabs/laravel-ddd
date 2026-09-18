@@ -26,6 +26,10 @@ class DomainMigration
 
     public static function paths(): array
     {
+        if (config('ddd.autoload.migrations', true) === false) {
+            return [];
+        }
+
         return DomainCache::has('domain-migration-paths')
             ? DomainCache::get('domain-migration-paths')
             : static::discoverPaths();
