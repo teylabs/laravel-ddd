@@ -23,6 +23,7 @@ All notable changes to `laravel-ddd` will be documented in this file.
 - Refresh the README with a quick start, clearer discovery scope, configuration guidance and production cache limitations.
 
 ### Chore
+- Complete pending factory suffix and policy-resolution tests, and remove obsolete stub-publishing coverage.
 - Add scheduled framework compatibility checks, contract tests and explicit reporting of unavailable dependency coverage.
 - Isolate test applications from installed Testbench files, simplify repetitive generator datasets, and add a pinned consumer-behaviour comparison harness.
 
