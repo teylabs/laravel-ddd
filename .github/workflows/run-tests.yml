@@ -41,6 +41,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # The bounded consumer comparison loads an immutable pre-extraction
+          # package commit; missing history must fail, never silently skip it.
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
