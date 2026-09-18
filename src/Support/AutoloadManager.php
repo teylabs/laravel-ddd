@@ -142,6 +142,10 @@ class AutoloadManager
             ? DomainCache::get('domain-providers')
             : $this->discoverProviders();
 
+        if (DomainCache::has('domain-providers') && ! $this->cachedClassesExist($providers)) {
+            $providers = $this->discoverProviders();
+        }
+
         foreach ($providers as $provider) {
             static::$registeredProviders[$provider] = $provider;
         }
@@ -154,6 +158,10 @@ class AutoloadManager
         $commands = DomainCache::has('domain-commands')
             ? DomainCache::get('domain-commands')
             : $this->discoverCommands();
+
+        if (DomainCache::has('domain-commands') && ! $this->cachedClassesExist($commands)) {
+            $commands = $this->discoverCommands();
+        }
 
         foreach ($commands as $command) {
             static::$registeredCommands[$command] = $command;
@@ -259,6 +267,21 @@ class AutoloadManager
             ? DomainCache::get('domain-listeners')
             : $this->discoverListeners();
 
+        $classes = $cached['subscribers'] ?? [];
+
+        foreach ($cached['listeners'] ?? [] as $listeners) {
+            foreach ($listeners as $listener) {
+                $class = is_array($listener) ? $listener[0] : $listener;
+                if (is_string($class)) {
+                    $classes[] = Str::before($class, '@');
+                }
+            }
+        }
+
+        if (DomainCache::has('domain-listeners') && ! $this->cachedClassesExist($classes)) {
+            $cached = $this->discoverListeners();
+        }
+
         // Normalize older manifests too: subscriber handlers belong to subscribe().
         collect(DomainDiscovery::withoutSubscriberListeners($cached['listeners'] ?? [], $cached['subscribers'] ?? []))
             ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => static::$registeredListeners[$event][] = $listener
@@ -270,6 +293,22 @@ class AutoloadManager
             );
 
         return $this;
+    }
+
+    /**
+     * A removed class invalidates its whole inventory so renamed replacements
+     * are discovered too. Recovery is in memory: boot must not write to a
+     * deployment's cache directory. Autoload errors deliberately propagate.
+     */
+    private function cachedClassesExist(array $classes): bool
+    {
+        foreach (array_unique($classes) as $class) {
+            if (! class_exists($class)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function finder($paths)
