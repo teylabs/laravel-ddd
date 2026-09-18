@@ -3,7 +3,7 @@
 `FrozenComparisonTest.php` compares the working package with source from commit
 `5710dea91808f4b786a89892e7206d38d7045901`, after the controller/request and config
 preservation fixes. This is a **bounded source baseline**, not a released-version
-parity certificate or the final v4 release baseline. Later intentional behavior
+parity certificate or the final v4 release baseline. Later intentional behaviour
 changes require an explicitly reviewed baseline update.
 
 The test extracts that commit using `git archive` and runs the reference and
@@ -52,7 +52,9 @@ vendor/bin/pest tests/Consumer/FrozenComparisonTest.php --no-coverage
 ```
 
 Changing the pin is not an automatic snapshot update. Review the old/new consumer
-observations and explain the separately approved behavior change first. Extend the
+observations and explain the separately approved behaviour change first. Extend the
 driver with concrete consumer contracts as extraction work reaches them; keep the
 reference implementation in its own process and never calculate expected paths
 with the candidate resolver.
+
+The subscriber compatibility correction retains the frozen source and adds an explicit expected delta for the two InvoiceEventSubscriber handlers that #118 excluded. Candidate inventories are not filtered or normalized: the comparison requires both restored entries at their exact positions and continues comparing every other observation unchanged.

@@ -456,6 +456,8 @@ class SendInvoiceNotification
 
 Discovery delegates to Laravel's event discovery and recognizes public `handle*` or `__invoke` methods with event parameter types. Discovered classes with a public, single-argument `subscribe()` method are registered as subscribers. A class with only `subscribe()` and no discoverable event handler is not guaranteed to be found; register it explicitly with Laravel instead.
 
+In v3, typed subscriber handlers also participate in listener discovery. Registering the same handler for the same event inside `subscribe()` can therefore cause it to run twice. This existing behaviour is preserved; repeated package registration does not add further copies.
+
 ### Ignoring Paths During PSR-4 Class Scanning
 To specify folders that should be excluded from PSR-4 class scanning, add them to the `ddd.autoload_ignore` configuration option. By default, the `Tests` and `Database/Migrations` folders are excluded.
 ```php
@@ -535,9 +537,9 @@ composer analyse
 vendor/bin/pint --test
 ```
 
-The [consumer comparison harness](tests/Consumer/README.md) needs its pinned baseline commit in local history; shallow clones must fetch that history. Use `composer format` to apply formatting. Tests use isolated application fixtures; the comparison checks a bounded set of consumer behaviors, not complete compatibility for every layout.
+The [consumer comparison harness](tests/Consumer/README.md) needs its pinned baseline commit in local history; shallow clones must fetch that history. Use `composer format` to apply formatting. Tests use isolated application fixtures; the comparison checks a bounded set of consumer behaviours, not complete compatibility for every layout.
 
-The main branch may contain unreleased changes. Use a release tag's README when checking behavior of a published version.
+The main branch may contain unreleased changes. Use a release tag's README when checking behaviour of a published version.
 
 ## Changelog
 
@@ -552,6 +554,6 @@ Please review [the repository security policy](https://github.com/teylabs/larave
 - [Jasper Tey](https://github.com/JasperTey)
 - [All Contributors](https://github.com/teylabs/laravel-ddd/graphs/contributors)
 
-## License
+## Licence
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+The MIT License (MIT). Please see [licence file](LICENSE.md) for more information.

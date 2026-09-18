@@ -284,8 +284,8 @@ class AutoloadManager
             $cached = $this->discoverListeners();
         }
 
-        // Normalize older manifests too: subscriber handlers belong to subscribe().
-        collect(DomainDiscovery::withoutSubscriberListeners($cached['listeners'] ?? [], $cached['subscribers'] ?? []))
+        // Preserve v3 discovery independently of explicit subscriber mappings.
+        collect($cached['listeners'] ?? [])
             ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => static::$registeredListeners[$event][] = $listener
             )
             );

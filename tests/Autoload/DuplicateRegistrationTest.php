@@ -9,6 +9,7 @@ use Tey\LaravelDDD\Support\DomainDiscovery;
 use Tey\LaravelDDD\Tests\Fixtures\Events\OrdinaryListener;
 use Tey\LaravelDDD\Tests\Fixtures\Events\Subscriber;
 use Tey\LaravelDDD\Tests\Fixtures\Events\TrackedEvent;
+use Tey\LaravelDDD\Tests\Fixtures\SubscriberCompatibility\PartialSubscriber;
 
 function configureEventInventory(array $inventory): void
 {
@@ -24,24 +25,24 @@ beforeEach(function () {
     configureEventInventory($this->inventory);
 });
 
-it('lets subscribers own their discovered handler registrations', function () {
+it('preserves discovery and explicit subscriber registrations', function () {
     (new AutoloadManager)->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber'])
+    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber', 'subscriber'])
         ->and($this->inventory['subscribers'])->toBe([Subscriber::class]);
 });
 
-it('registers each discovered handler once across repeated runs and managers', function () {
+it('does not add further copies across repeated runs and managers', function () {
     $manager = new AutoloadManager;
     $manager->run()->run()->boot()->run();
     (new AutoloadManager)->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber']);
+    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber', 'subscriber']);
 });
 
-it('normalizes subscriber handlers from previously cached manifests', function () {
+it('preserves subscriber handlers from previously cached manifests', function () {
     configureEventInventory([
         'listeners' => [TrackedEvent::class => [OrdinaryListener::class, [Subscriber::class, 'handleTracked']]],
         'subscribers' => [Subscriber::class],
@@ -49,7 +50,7 @@ it('normalizes subscriber handlers from previously cached manifests', function (
     (new AutoloadManager)->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber']);
+    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber', 'subscriber']);
 });
 
 it('can add new handlers without duplicating old ones or removing manual registrations', function () {
@@ -76,7 +77,7 @@ it('can add new handlers without duplicating old ones or removing manual registr
     $manager->run()->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['manual', 'listener', 'subscriber', 'new']);
+    expect($event->calls)->toEqualCanonicalizing(['manual', 'listener', 'subscriber', 'subscriber', 'new']);
 });
 
 it('registers again when the event dispatcher is replaced', function () {
@@ -86,7 +87,7 @@ it('registers again when the event dispatcher is replaced', function () {
     $manager->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber']);
+    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber', 'subscriber']);
 });
 
 it('registers normally after the application is refreshed', function () {
@@ -97,7 +98,7 @@ it('registers normally after the application is refreshed', function () {
     (new AutoloadManager)->run();
     Event::dispatch($event = new TrackedEvent);
 
-    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber']);
+    expect($event->calls)->toEqualCanonicalizing(['listener', 'subscriber', 'subscriber']);
 });
 
 class RetryableEventSubscriber
@@ -139,3 +140,64 @@ it('does not retain discarded dispatchers in the registration registry', functio
 
     expect($reference->get())->toBeNull();
 });
+
+class PartialEventSubscriber
+{
+    public function handleTracked(TrackedEvent $event): void
+    {
+        $event->calls[] = 'discovered-only';
+    }
+
+    public function subscribe(Dispatcher $events): void
+    {
+        $events->listen('subscriber.explicit', fn () => null);
+    }
+}
+
+it('preserves discovered-only subscriber handlers from existing manifests', function () {
+    configureEventInventory([
+        'listeners' => [TrackedEvent::class => [[PartialEventSubscriber::class, 'handleTracked']]],
+        'subscribers' => [PartialEventSubscriber::class],
+    ]);
+    $manager = new AutoloadManager;
+    $manager->run()->run();
+    Event::dispatch($event = new TrackedEvent);
+    expect($event->calls)->toBe(['discovered-only']);
+});
+
+it('retains partial subscriber handlers in fresh discovery and cache writes', function () {
+    Lody::resolveClassnameUsing(fn (SplFileInfo $file) => 'Tey\\LaravelDDD\\Tests\\Fixtures\\SubscriberCompatibility\\'.pathinfo($file->getFilename(), PATHINFO_FILENAME));
+    $inventory = (new DomainDiscovery)->listeners([__DIR__.'/../Fixtures/SubscriberCompatibility'], base_path());
+    $class = PartialSubscriber::class;
+
+    expect($inventory['listeners'][TrackedEvent::class])->toBe([[$class, 'handleTracked']])
+        ->and($inventory['subscribers'])->toBe([$class]);
+
+    configureEventInventory($inventory);
+    (new AutoloadManager)->run()->run();
+    Event::dispatch($event = new TrackedEvent);
+    expect($event->calls)->toBe(['discovered-only']);
+});
+
+it('registers discovered handlers before invoking subscribe', function () {
+    configureEventInventory([
+        'listeners' => [TrackedEvent::class => [[SubscribeDispatchesEvent::class, 'handleTracked']]],
+        'subscribers' => [SubscribeDispatchesEvent::class],
+    ]);
+    app()->instance('subscription-event', new TrackedEvent);
+    (new AutoloadManager)->run();
+    expect(app('subscription-event')->calls)->toBe(['during-subscribe']);
+});
+
+class SubscribeDispatchesEvent
+{
+    public function handleTracked(TrackedEvent $event): void
+    {
+        $event->calls[] = 'during-subscribe';
+    }
+
+    public function subscribe(Dispatcher $events): void
+    {
+        $events->dispatch(app('subscription-event'));
+    }
+}

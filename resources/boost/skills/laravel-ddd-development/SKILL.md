@@ -39,7 +39,7 @@ With package defaults, the model is under `src/Domain/Invoicing/Models`; control
 - `Invoicing:/Support/InvoiceBuilder` starts at the selected layer/domain root, bypassing the configured type namespace; it is not an absolute filesystem path.
 - `ddd:class`, `ddd:interface`, and `ddd:trait` have empty type namespaces by default, so include desired folders in the name.
 
-Inspect generated namespaces, imports, inheritance, and related request/factory/model files. Run tests relevant to the requested application behavior. Check existing files before using `--force`; it overwrites generated output.
+Inspect generated namespaces, imports, inheritance, and related request/factory/model files. Run tests relevant to the requested application behaviour. Check existing files before using `--force`; it overwrites generated output.
 
 DTO and action defaults reference `spatie/laravel-data` and `lorisleiva/laravel-actions`. Check those dependencies or the application's custom stubs before generating classes that reference them. Do not install optional packages solely because they appear in an example.
 
@@ -61,4 +61,4 @@ Set individual `ddd.autoload` switches to `false` to disable them. Deleting the 
 
 After intentional configuration or discovery changes, rebuild affected application caches through the project's deployment workflow. `ddd:optimize` and `ddd:clear` manage package manifests and integrate with Laravel's `optimize` / `optimize:clear`. Do not run broad cache-clearing commands against an unrelated environment just to generate a file.
 
-For exact behavior, use the installed package source and README rather than assuming the latest upstream documentation matches the installed release. Application instructions and the user's chosen scope take precedence over these examples.
+For exact behaviour, use the installed package source and README rather than assuming the latest upstream documentation matches the installed release. Application instructions and the user's chosen scope take precedence over these examples.
