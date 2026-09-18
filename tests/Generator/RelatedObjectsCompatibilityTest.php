@@ -81,12 +81,24 @@ it('preserves controller request references when callbacks relocate generated re
     ])->expectsQuestion('A Domain\\Billing\\Models\\Invoice model does not exist. Do you want to generate it?', false)
         ->assertSuccessful()->execute();
 
-    // Keep the current reference convention visible; making these imports
-    // follow the request schemas is a separate behavior change.
+    // The controller's imports follow the domain's request location. They used
+    // to carry the controller's own class name as a namespace segment
+    // (Requests\InvoiceController\StoreInvoiceRequest), which referred to a
+    // class nothing had generated; that is the defect this expectation used to
+    // pin and no longer does.
+    //
+    // A callback that RELOCATES a child request — as this one does, to
+    // Custom\Requests — is deliberately NOT reflected here. Child schemas are
+    // resolved by the child generator when it builds its own blueprint, and
+    // reproducing that from the parent would mean either invoking the callback a
+    // second time or resolving a synthetic child blueprint. Neither is done, so
+    // for a relocated request the import points at the conventional location
+    // rather than the relocated one. That is a known, bounded limitation and is
+    // characterized here rather than claimed as supported.
     expect(file_get_contents(base_path('src/Application/Billing/Controllers/InvoiceController.php')))
         ->toContain('use Domain\\Billing\\Models\\Invoice;')
-        ->toContain('use Application\\Billing\\Requests\\InvoiceController\\StoreInvoiceRequest;')
-        ->toContain('use Application\\Billing\\Requests\\InvoiceController\\UpdateInvoiceRequest;');
+        ->toContain('use Application\\Billing\\Requests\\StoreInvoiceRequest;')
+        ->toContain('use Application\\Billing\\Requests\\UpdateInvoiceRequest;');
 
     foreach (['StoreInvoiceRequest', 'UpdateInvoiceRequest'] as $name) {
         expect(file_get_contents(base_path('src/Custom/Requests/'.$name.'.php')))

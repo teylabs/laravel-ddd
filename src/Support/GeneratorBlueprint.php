@@ -143,6 +143,11 @@ class GeneratorBlueprint
         return $this->domain->factory($name);
     }
 
+    public function getRequestFor(string $name)
+    {
+        return $this->domain->object('request', $name);
+    }
+
     public function getMigrationPath()
     {
         return $this->domain->migrationPath;

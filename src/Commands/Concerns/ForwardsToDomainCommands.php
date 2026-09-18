@@ -6,13 +6,28 @@ use Illuminate\Support\Str;
 
 trait ForwardsToDomainCommands
 {
-    public function call($command, array $arguments = [])
+    /**
+     * The name a forwarded child object is generated under.
+     *
+     * A nested generator keeps its children beside it, so `Billing/Invoice`
+     * produces `Billing/InvoiceFactory` rather than `InvoiceFactory`. Anything
+     * that needs to refer to a child — an import written into the parent, say —
+     * has to ask for the name here rather than work it out again, because two
+     * implementations of this rule drifting apart is exactly how a generated
+     * class ends up importing a file that was never written.
+     */
+    protected function forwardedNameFor(string $name): string
     {
         $subfolder = Str::contains($this->getNameInput(), '/')
             ? Str::beforeLast($this->getNameInput(), '/')
             : null;
 
-        $nameWithSubfolder = $subfolder ? "{$subfolder}/{$arguments['name']}" : $arguments['name'];
+        return $subfolder ? "{$subfolder}/{$name}" : $name;
+    }
+
+    public function call($command, array $arguments = [])
+    {
+        $nameWithSubfolder = $this->forwardedNameFor($arguments['name']);
 
         $domainCommand = match ($command) {
             'make:request', 'make:model', 'make:factory', 'make:policy',

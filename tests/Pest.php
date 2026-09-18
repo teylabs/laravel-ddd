@@ -1,5 +1,6 @@
 <?php
 
+use Symfony\Component\Process\Process;
 use Tey\LaravelDDD\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);
@@ -25,4 +26,21 @@ function onlyOnLaravelVersionsBelow($minimumVersion)
 function setConfigValues(array $values)
 {
     TestCase::configValues($values);
+}
+
+/**
+ * Assert that a generated file is valid PHP.
+ *
+ * Shared because more than one suite needs it: a generator can write a file that
+ * exists, contains the right words and still does not parse — a malformed import
+ * is exactly that failure — and `php -l` is the only check that catches it.
+ */
+function assertParses(string $relativePath): void
+{
+    $process = new Process([PHP_BINARY, '-l', base_path($relativePath)]);
+    $process->run();
+
+    expect($process->isSuccessful())->toBeTrue(
+        "[{$relativePath}] is not valid PHP: ".trim($process->getOutput().$process->getErrorOutput())
+    );
 }
