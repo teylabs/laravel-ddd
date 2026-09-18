@@ -99,28 +99,36 @@ function directoryStillAcceptsWrites(string $directory): bool
 }
 
 /**
- * Whether symbolic links can be created here.
+ * Create a symbolic link, or skip when the platform will not allow one at all.
  *
- * Windows only allows them with particular privileges, so this asks by trying
- * rather than by guessing from the platform, and clears up after itself.
+ * $workingDirectory is where the link is created FROM, which matters for a
+ * relative target: Windows resolves one against the working directory rather
+ * than against the link's own directory, so a relative link has to be made from
+ * beside the link for the target to be found. The directory is restored
+ * whatever happens.
+ *
+ * Only a genuine inability to create links — Windows without the privilege —
+ * ends in a skip.
  */
-function canCreateSymlinks(): bool
+function symlinkOrSkip(string $target, string $link, ?string $workingDirectory = null): void
 {
-    $target = config_path('ddd-symlink-probe-target-'.bin2hex(random_bytes(6)));
-    $link = config_path('ddd-symlink-probe-link-'.bin2hex(random_bytes(6)));
+    $previous = getcwd();
 
-    File::ensureDirectoryExists(dirname($target));
-    file_put_contents($target, 'probe');
+    try {
+        if ($workingDirectory !== null) {
+            chdir($workingDirectory);
+        }
 
-    $created = @symlink($target, $link);
-
-    if (is_link($link)) {
-        @unlink($link);
+        @symlink($target, $link);
+    } finally {
+        if ($workingDirectory !== null && is_string($previous)) {
+            chdir($previous);
+        }
     }
 
-    @unlink($target);
-
-    return (bool) $created;
+    if (! is_link($link)) {
+        test()->markTestSkipped('Symbolic links cannot be created here.');
+    }
 }
 
 it('leaves its own values alone when saving, and saves the same file again', function () {
@@ -577,19 +585,21 @@ it('writes through a symlinked configuration file rather than replacing the link
     // without resolving it first, a consumer pointing config/ddd.php at a
     // shared or release-managed file would find their link quietly turned into
     // a regular file and the real target left stale.
-    if (! canCreateSymlinks()) {
-        $this->markTestSkipped('Symbolic links cannot be created here.');
-    }
-
     $link = config_path('ddd.php');
     $target = base_path('shared/ddd.php');
 
     File::ensureDirectoryExists(dirname($target));
     file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Shared\Models\Base'], true).';');
 
-    // A relative target resolves against the LINK's directory, not the working
-    // directory, which is the case a naive readlink() would get wrong.
-    symlink($relative ? '../shared/ddd.php' : $target, $link);
+    // A relative target is stored as written and resolves against the LINK's
+    // directory, which is the case a naive readlink() would get wrong. The link
+    // is created from that directory so the relative form is portable — Windows
+    // resolves the target against the working directory when making the link.
+    symlinkOrSkip(
+        $relative ? '../shared/ddd.php' : $target,
+        $link,
+        $relative ? dirname($link) : null,
+    );
 
     $linkTargetBefore = readlink($link);
 
@@ -617,10 +627,6 @@ it('keeps the permissions of a symlinked target', function () {
         $this->markTestSkipped('Windows has no mode bits to carry over; the save does not try.');
     }
 
-    if (! canCreateSymlinks()) {
-        $this->markTestSkipped('Symbolic links cannot be created here.');
-    }
-
     $link = config_path('ddd.php');
     $target = base_path('shared/ddd.php');
 
@@ -628,7 +634,7 @@ it('keeps the permissions of a symlinked target', function () {
     file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Shared\Models\Base'], true).';');
     chmod($target, 0600);
 
-    symlink($target, $link);
+    symlinkOrSkip($target, $link);
 
     (new ConfigManager($link))->syncWithLatest()->save();
 
@@ -641,17 +647,13 @@ it('keeps the permissions of a symlinked target', function () {
 });
 
 it('leaves a symlink and its target alone when the target cannot be written', function () {
-    if (! canCreateSymlinks()) {
-        $this->markTestSkipped('Symbolic links cannot be created here.');
-    }
-
     $link = config_path('ddd.php');
     $target = base_path('shared/ddd.php');
 
     File::ensureDirectoryExists(dirname($target));
     file_put_contents($target, '<?php return '.var_export(['base_model' => 'Domain\Untouched\Model'], true).';');
 
-    symlink($target, $link);
+    symlinkOrSkip($target, $link);
 
     $original = file_get_contents($target);
     $originalMode = fileperms(dirname($target)) & 0777;
@@ -683,15 +685,19 @@ it('refuses a symlink whose target does not exist, and leaves the link alone', f
     // A DELIBERATE COMPATIBILITY LIMIT. copy() would have created the missing
     // target; this implementation requires an existing resolved target, so this
     // fails loudly instead of quietly replacing the link with a regular file.
-    if (! canCreateSymlinks()) {
-        $this->markTestSkipped('Symbolic links cannot be created here.');
-    }
-
     $link = config_path('ddd.php');
     $missing = base_path('shared/never-written.php');
 
+    // Linked while the target exists and then emptied out, because Windows
+    // cannot create a link to something that is not there — it resolves the
+    // target to decide between a file and a directory link. The result is the
+    // same dangling link on both platforms.
     File::ensureDirectoryExists(dirname($missing));
-    symlink($missing, $link);
+    file_put_contents($missing, '<?php return [];');
+
+    symlinkOrSkip($missing, $link);
+
+    unlink($missing);
 
     $config = new ConfigManager($link);
     $config->syncWithLatest();
