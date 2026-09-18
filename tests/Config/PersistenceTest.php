@@ -131,59 +131,6 @@ function symlinkOrSkip(string $target, string $link, ?string $workingDirectory =
     }
 }
 
-/**
- * TEMPORARY DIAGNOSTIC — remove once the Windows symlink behaviour is proved.
- *
- * Every question the failing Windows jobs raise, asked at one moment and
- * printed: what the link is according to each API, what it resolves to,
- * whether that resolved path exists, and whether any of it changes once the
- * stat cache is cleared. Everything here is synthetic fixture data.
- */
-function dumpLinkFacts(string $moment, string $link, string $target): void
-{
-    $read = function (string $link, string $target): array {
-        $resolved = realpath($link);
-        $raw = @readlink($link);
-        $lstat = @lstat($link);
-
-        return [
-            'is_link' => var_export(is_link($link), true),
-            'is_file' => var_export(is_file($link), true),
-            'file_exists' => var_export(file_exists($link), true),
-            'is_dir' => var_export(is_dir($link), true),
-            'realpath' => var_export($resolved, true),
-            'realpath_exists' => var_export($resolved !== false && file_exists($resolved), true),
-            'readlink' => var_export($raw, true),
-            'lstat_mode' => $lstat === false ? 'false' : decoct($lstat['mode'] & 0170000),
-            'target_exists' => var_export(file_exists($target), true),
-            'target_base_model' => var_export(
-                is_file($target) ? ((array) (include $target))['base_model'] ?? '(absent)' : '(no file)',
-                true
-            ),
-        ];
-    };
-
-    $before = $read($link, $target);
-
-    // The comparison the brief asks for: anything that differs here was being
-    // answered from PHP's stat cache rather than from the filesystem.
-    clearstatcache(true);
-
-    $after = $read($link, $target);
-
-    $line = "[ddd-diag] {$moment} cwd=".getcwd();
-
-    foreach ($after as $key => $value) {
-        $line .= " {$key}={$value}";
-
-        if ($before[$key] !== $value) {
-            $line .= "(cached:{$before[$key]})";
-        }
-    }
-
-    fwrite(STDERR, $line.PHP_EOL);
-}
-
 it('leaves its own values alone when saving, and saves the same file again', function () {
     // save() used to hide each namespace separator behind a marker and write the
     // result back through set(). The FILE was correct, so this was invisible
@@ -661,20 +608,7 @@ it('writes through a symlinked configuration file rather than replacing the link
     $resolvedBefore = realpath($link);
     $rawBefore = @readlink($link);
 
-    dumpLinkFacts("{$description}: after creating the link", $link, $target);
-
-    $config = new ConfigManager($link);
-
-    // What the manager READ. A save that publishes package defaults over a
-    // consumer's file means this came back null rather than their value.
-    fwrite(STDERR, '[ddd-diag] '.$description.': constructed base_model='
-        .var_export($config->get('base_model'), true).PHP_EOL);
-
-    dumpLinkFacts("{$description}: before saving", $link, $target);
-
-    $config->syncWithLatest()->save();
-
-    dumpLinkFacts("{$description}: after saving", $link, $target);
+    (new ConfigManager($link))->syncWithLatest()->save();
 
     expect(is_link($link))->toBeTrue("{$description}: the link itself was replaced")
         ->and(realpath($link))->toBe($resolvedBefore, "{$description}: the link now resolves elsewhere")
@@ -780,33 +714,13 @@ it('refuses a symlink whose target does not exist, and leaves the link alone', f
     // LINK on Windows, so a link leading nowhere used to send the constructor
     // into a require of a file that is not there; is_file() asks about the
     // target, and a link with none falls back to the package defaults.
-    dumpLinkFacts('dangling: after creating the link', $link, $missing);
-
     $config = new ConfigManager($link);
 
     expect($config->get())->toHaveKeys(array_keys(require DDD::packagePath('config/ddd.php')));
 
     $config->syncWithLatest();
 
-    dumpLinkFacts('dangling: before saving', $link, $missing);
-
-    // The same expectation as before, taken apart only so the facts below are
-    // printed even when it fails. It still fails in exactly the same case.
-    $thrown = null;
-
-    try {
-        $config->save();
-    } catch (Throwable $e) {
-        $thrown = $e;
-    }
-
-    fwrite(STDERR, '[ddd-diag] dangling: save threw '
-        .($thrown === null ? 'nothing' : get_class($thrown).' — '.$thrown->getMessage()).PHP_EOL);
-
-    dumpLinkFacts('dangling: after the save attempt', $link, $missing);
-
-    expect($thrown)->toBeInstanceOf(RuntimeException::class);
-    expect($thrown?->getMessage())->toContain('symbolic link');
+    expect(fn () => $config->save())->toThrow(RuntimeException::class, 'symbolic link');
 
     expect(is_link($link))->toBeTrue('the link was removed')
         ->and(readlink($link))->toBe($missing)

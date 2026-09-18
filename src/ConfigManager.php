@@ -26,17 +26,33 @@ class ConfigManager
         // Read the resolved path, not the nullable argument: constructed without
         // one, this used to fall back to package defaults even when the consumer
         // had a config file sitting exactly where configPath points.
-        //
-        // is_file() rather than file_exists(): it asks whether there is a
-        // regular file to read, following a symbolic link to its target. On
-        // Windows file_exists() answers about the LINK, so a link whose target
-        // is missing sent this straight into a require of a file that is not
-        // there — a fatal error just from constructing the manager. Now a link
-        // that leads nowhere falls back to the package defaults here, and save()
-        // refuses it explicitly.
-        $this->config = is_file($this->configPath) ? require $this->configPath : $this->packageConfig;
+        $existing = $this->existingConfigPath();
+
+        $this->config = $existing !== null ? require $existing : $this->packageConfig;
 
         $this->stub = file_get_contents(DDD::packagePath('config/ddd.php.stub'));
+    }
+
+    /**
+     * The file to read the configuration from, or null when there is none.
+     *
+     * Resolved first and then asked about, because on Windows the question
+     * cannot be put to the configured path directly. Measured there: for a
+     * symbolic link storing a RELATIVE target, is_file() is false and
+     * readlink() fails outright even though the link is perfectly good and
+     * realpath() resolves it — so asking is_file() about the link read package
+     * defaults over a consumer's config and then saved them back over it.
+     * file_exists() is no better: it answers true for a link whose target does
+     * not exist at all.
+     *
+     * realpath() plus is_file() on the RESULT answers both cases, and answers
+     * them the same way on every platform.
+     */
+    protected function existingConfigPath(): ?string
+    {
+        $path = realpath($this->configPath);
+
+        return $path !== false && is_file($path) ? $path : null;
     }
 
     /**
@@ -390,10 +406,14 @@ class ConfigManager
         }
 
         // realpath() follows a chain of links and resolves a relative target
-        // against the link's own directory; false means it leads nowhere.
+        // against the link's own directory. Whether it leads anywhere is a
+        // separate question from whether it resolves: on Linux and macOS a link
+        // with no target gives false, but on Windows it gives the path the
+        // target WOULD have had, measured on CI. So the resolved path is
+        // checked for existence rather than trusted.
         $target = realpath($this->configPath);
 
-        if ($target === false) {
+        if ($target === false || ! file_exists($target)) {
             throw new RuntimeException(
                 "The configuration at {$this->configPath} is a symbolic link whose target does not exist."
             );
