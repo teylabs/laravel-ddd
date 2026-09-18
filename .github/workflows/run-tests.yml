@@ -7,7 +7,7 @@ on:
     # chore/framework-compatibility is a stacked base: pull requests targeting it
     # are real changes that need the full matrix, and without it listed here they
     # would merge upward having never run these tests.
-    branches: [main, next, develop, develop-internals, chore/framework-compatibility, fix/listener-discovery-filtering]
+    branches: [main, next, develop, develop-internals, chore/framework-compatibility, fix/listener-discovery-filtering, refactor/test-harness-isolation]
 
 jobs:
   test:
