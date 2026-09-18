@@ -681,7 +681,7 @@ it('leaves a symlink and its target alone when the target cannot be written', fu
 
 it('refuses a symlink whose target does not exist, and leaves the link alone', function () {
     // A DELIBERATE COMPATIBILITY LIMIT. copy() would have created the missing
-    // target; rename() cannot do that without destroying the link, so this
+    // target; this implementation requires an existing resolved target, so this
     // fails loudly instead of quietly replacing the link with a regular file.
     if (! canCreateSymlinks()) {
         $this->markTestSkipped('Symbolic links cannot be created here.');

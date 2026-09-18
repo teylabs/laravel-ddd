@@ -371,7 +371,7 @@ class ConfigManager
      * to read back the path they gave.
      *
      * A link with no target is refused. copy() used to create the missing file;
-     * rename() cannot do that without destroying the link, so this is a
+     * this implementation requires an existing resolved target, so this is a
      * deliberate compatibility limit and it fails loudly rather than quietly
      * replacing the link.
      */
