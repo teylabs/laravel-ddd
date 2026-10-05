@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Artisan;
 use Tey\LaravelDDD\Commands;
 
-// Regression test for https://github.com/jaspertey/laravel-ddd/issues/115
+// Regression test for https://github.com/teylabs/laravel-ddd/issues/115
 // Laravel 13.24 consolidated the framework generator command definitions
 // into $signature (laravel/framework#60926), which caused the extending
 // ddd:* commands to register under their parent's make:* name instead.
