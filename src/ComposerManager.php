@@ -16,6 +16,12 @@ class ComposerManager
 
     protected array $data;
 
+    /**
+     * The file contents decoded with JSON objects kept as objects, used to
+     * write empty objects back as {} rather than [].
+     */
+    protected mixed $shape;
+
     protected ?OutputStyle $output = null;
 
     public function __construct(?string $composerFile = null)
@@ -24,7 +30,11 @@ class ComposerManager
 
         $this->composerFile = $composerFile ?? app()->basePath('composer.json');
 
-        $this->data = json_decode(file_get_contents($this->composerFile), true);
+        $contents = file_get_contents($this->composerFile);
+
+        $this->data = json_decode($contents, true);
+
+        $this->shape = json_decode($contents);
     }
 
     public static function make(?string $composerFile = null): self
@@ -159,7 +169,10 @@ class ComposerManager
     {
         file_put_contents(
             $this->composerFile,
-            json_encode($this->data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            json_encode(
+                $this->preserveEmptyObjects($this->data, $this->shape),
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            )
         );
 
         return $this;
@@ -172,7 +185,37 @@ class ComposerManager
 
     public function toJson()
     {
-        return json_encode($this->data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        return json_encode($this->preserveEmptyObjects($this->data, $this->shape), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    }
+
+    /**
+     * Restore an empty array to {} wherever the file held a JSON object.
+     */
+    protected function preserveEmptyObjects(mixed $value, mixed $shape): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($shape instanceof \stdClass) {
+            if ($value === []) {
+                return new \stdClass;
+            }
+
+            $shape = get_object_vars($shape);
+        }
+
+        if (! is_array($shape)) {
+            return $value;
+        }
+
+        foreach ($value as $key => $item) {
+            if (array_key_exists($key, $shape)) {
+                $value[$key] = $this->preserveEmptyObjects($item, $shape[$key]);
+            }
+        }
+
+        return $value;
     }
 
     public function toArray()
