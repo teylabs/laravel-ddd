@@ -37,3 +37,39 @@ it('can clear cache', function () {
     expect(DomainCache::has('two'))->toBeFalse();
     expect(DomainCache::has('three'))->toBeFalse();
 });
+
+describe('with a null cache directory', function () {
+    beforeEach(function () {
+        config(['ddd.cache_directory' => null]);
+    });
+
+    afterEach(function () {
+        File::delete(glob(base_path('ddd-*.php')));
+        File::delete(glob(base_path('bootstrap/cache/ddd/ddd-*.php')));
+    });
+
+    it('uses the default cache directory', function () {
+        DomainCache::set('one', [12, 23, 34]);
+
+        expect(file_exists(base_path('bootstrap/cache/ddd/ddd-one.php')))->toBeTrue();
+        expect(glob(base_path('ddd-*.php')))->toBeEmpty();
+
+        expect(DomainCache::has('one'))->toBeTrue();
+        expect(DomainCache::get('one'))->toEqual([12, 23, 34]);
+
+        DomainCache::forget('one');
+
+        expect(file_exists(base_path('bootstrap/cache/ddd/ddd-one.php')))->toBeFalse();
+    });
+
+    it('leaves files in the project root alone when clearing', function () {
+        file_put_contents(base_path('ddd-decoy.php'), '<?php return [];');
+
+        DomainCache::set('one', [12, 23, 34]);
+
+        DomainCache::clear();
+
+        expect(DomainCache::has('one'))->toBeFalse();
+        expect(file_exists(base_path('ddd-decoy.php')))->toBeTrue();
+    });
+});
