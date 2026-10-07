@@ -46,6 +46,61 @@ it('keeps the rest of autoload when unsetting a psr-4 namespace', function ($nam
     'with trailing backslash' => ['Domain\\'],
 ]);
 
+it('keeps empty objects as objects on save', function () {
+    writeComposerFixture($this->composerFile, <<<'JSON'
+    {
+        "autoload": {
+            "psr-4": {}
+        },
+        "extra": {
+            "laravel": {
+                "dont-discover": []
+            }
+        },
+        "config": {},
+        "scripts": {}
+    }
+    JSON);
+
+    ComposerManager::make($this->composerFile)
+        ->registerPsr4Autoload('Domain', 'src/Domain')
+        ->save();
+
+    $contents = file_get_contents($this->composerFile);
+
+    expect($contents)
+        ->toContain('"config": {}')
+        ->toContain('"scripts": {}')
+        ->toContain('"dont-discover": []');
+
+    $data = json_decode($contents);
+
+    expect($data->config)->toBeInstanceOf(stdClass::class)
+        ->and($data->scripts)->toBeInstanceOf(stdClass::class)
+        ->and($data->extra->laravel->{'dont-discover'})->toBe([])
+        ->and($data->autoload->{'psr-4'}->{'Domain\\'})->toBe('src/Domain');
+});
+
+it('saves an empty psr-4 object after removing the last namespace', function () {
+    writeComposerFixture($this->composerFile, <<<'JSON'
+    {
+        "autoload": {
+            "psr-4": {
+                "Domain\\": "src/Domain/"
+            }
+        }
+    }
+    JSON);
+
+    ComposerManager::make($this->composerFile)
+        ->unsetPsr4Autoload('Domain')
+        ->save();
+
+    $data = json_decode(file_get_contents($this->composerFile));
+
+    expect($data->autoload->{'psr-4'})->toEqual(new stdClass);
+});
+
 it('saves to the composer file it was made from', function () {
     $baseComposerContents = file_get_contents(base_path('composer.json'));
 
