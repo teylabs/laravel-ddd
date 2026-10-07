@@ -45,3 +45,30 @@ it('keeps the rest of autoload when unsetting a psr-4 namespace', function ($nam
     'without trailing backslash' => ['Domain'],
     'with trailing backslash' => ['Domain\\'],
 ]);
+
+it('saves to the composer file it was made from', function () {
+    $baseComposerContents = file_get_contents(base_path('composer.json'));
+
+    $alternateFile = "{$this->directory}/alternate.json";
+
+    writeComposerFixture($alternateFile, <<<'JSON'
+    {
+        "name": "acme/alternate"
+    }
+    JSON);
+
+    try {
+        ComposerManager::make($alternateFile)
+            ->registerPsr4Autoload('Domain', 'src/Domain')
+            ->save();
+
+        expect(json_decode(file_get_contents($alternateFile), true))->toEqual([
+            'name' => 'acme/alternate',
+            'autoload' => ['psr-4' => ['Domain\\' => 'src/Domain']],
+        ]);
+
+        expect(file_get_contents(base_path('composer.json')))->toBe($baseComposerContents);
+    } finally {
+        file_put_contents(base_path('composer.json'), $baseComposerContents);
+    }
+});

@@ -157,7 +157,10 @@ class ComposerManager
 
     public function save()
     {
-        $this->composer->modify(fn ($composerData) => $this->data);
+        file_put_contents(
+            $this->composerFile,
+            json_encode($this->data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
 
         return $this;
     }
