@@ -143,7 +143,7 @@ class ComposerManager
     {
         $namespace = Str::finish($namespace, '\\');
 
-        return $this->forget(['autoload', 'psr-4', $namespace]);
+        return $this->forget("autoload.psr-4.{$namespace}");
     }
 
     public function reload()
