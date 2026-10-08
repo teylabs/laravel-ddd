@@ -5,6 +5,7 @@ use Illuminate\Console\ManuallyFailedException;
 use Illuminate\Contracts\Console\Isolatable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\File;
 use Tey\LaravelDDD\Commands\DomainClassMakeCommand;
 use Tey\LaravelDDD\Facades\DDD;
 use Tey\LaravelDDD\Tests\Fixtures\Commands\LifecycleGenerator;
@@ -147,16 +148,38 @@ it('honors legacy input customization before resolving the blueprint', function 
         ->and(file_exists(base_path('src/Domain/Billing/Invoice.php')))->toBeFalse();
 });
 
-it('preserves the existing duplicate-file exit codes', function ($command, $expectedStatus) {
-    $arguments = ['name' => 'Billing:Invoice'];
+// ddd:exception and ddd:listener are left out: their native duplicate check is
+// class_exists(), which a class written during the test cannot satisfy.
+it('exits 0 on a duplicate class like make:*, leaving the file untouched', function ($command) {
+    $arguments = ['name' => 'Billing:DuplicateProbe'];
+
+    expect(Artisan::call($command, $arguments))->toBe(0);
+
+    $written = collect(['src', 'app/Modules'])
+        ->filter(fn ($root) => is_dir(base_path($root)))
+        ->flatMap(fn ($root) => File::allFiles(base_path($root)))
+        ->first(fn ($file) => str_contains($file->getFilename(), 'DuplicateProbe'));
+
+    expect($written)->not->toBeNull();
+
+    file_put_contents($written->getPathname(), '<?php // edited');
 
     expect(Artisan::call($command, $arguments))->toBe(0)
-        ->and(Artisan::call($command, $arguments))->toBe($expectedStatus)
-        ->and(Artisan::output())->toContain('already exists');
+        ->and(Artisan::output())->toContain('already exists')
+        ->and(file_get_contents($written->getPathname()))->toBe('<?php // edited');
 })->with([
-    'model' => ['ddd:model', 0],
-    'class' => ['ddd:class', 1],
+    'ddd:action', 'ddd:base-model', 'ddd:base-view-model', 'ddd:cast', 'ddd:channel', 'ddd:class',
+    'ddd:command', 'ddd:controller', 'ddd:dto', 'ddd:enum', 'ddd:event',
+    'ddd:factory', 'ddd:interface', 'ddd:job', 'ddd:mail', 'ddd:middleware',
+    'ddd:model', 'ddd:notification', 'ddd:observer', 'ddd:policy', 'ddd:provider', 'ddd:request',
+    'ddd:resource', 'ddd:rule', 'ddd:scope', 'ddd:seeder', 'ddd:trait', 'ddd:value', 'ddd:view-model',
 ]);
+
+it('exits 0 on a name reserved by PHP like make:*', function () {
+    expect(Artisan::call('ddd:class', ['name' => 'Billing:Class']))->toBe(0)
+        ->and(Artisan::output())->toContain('reserved')
+        ->and(file_exists(base_path('src/Domain/Billing/Class.php')))->toBeFalse();
+});
 
 it('keeps the parent context while a different domain command runs', function () {
     $this->generator->callback = function ($command) {

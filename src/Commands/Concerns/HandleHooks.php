@@ -29,10 +29,12 @@ trait HandleHooks
 
         $this->afterHandle();
 
-        // Handle various return types from parent commands
+        // Handle various return types from parent commands. A native generator
+        // returns false when the class already exists or the name is reserved;
+        // Artisan turns that into exit 0, so ddd:* exits like its make:* parent.
         /** @phpstan-ignore-next-line identical.alwaysFalse */
         if ($result === false) {
-            return self::FAILURE;
+            return false;
         }
 
         /** @phpstan-ignore-next-line function.impossibleType */
