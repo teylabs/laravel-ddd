@@ -8,7 +8,7 @@ class DomainCache
 {
     public static function set($key, $value)
     {
-        $cacheDirectory = config('ddd.cache_directory', 'bootstrap/cache/ddd');
+        $cacheDirectory = static::directory();
 
         File::ensureDirectoryExists(base_path($cacheDirectory));
 
@@ -24,7 +24,7 @@ class DomainCache
 
     public static function get($key)
     {
-        $cacheDirectory = config('ddd.cache_directory', 'bootstrap/cache/ddd');
+        $cacheDirectory = static::directory();
 
         $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
 
@@ -33,7 +33,7 @@ class DomainCache
 
     public static function has($key)
     {
-        $cacheDirectory = config('ddd.cache_directory', 'bootstrap/cache/ddd');
+        $cacheDirectory = static::directory();
 
         $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
 
@@ -49,7 +49,7 @@ class DomainCache
 
     public static function forget($key)
     {
-        $cacheDirectory = config('ddd.cache_directory', 'bootstrap/cache/ddd');
+        $cacheDirectory = static::directory();
 
         $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
 
@@ -58,8 +58,18 @@ class DomainCache
 
     public static function clear()
     {
-        $files = glob(base_path(config('ddd.cache_directory').'/ddd-*.php'));
+        $files = glob(base_path(static::directory().'/ddd-*.php'));
 
         File::delete($files);
+    }
+
+    /**
+     * The configured cache directory; null (or empty) falls back to the default.
+     */
+    protected static function directory(): string
+    {
+        $directory = config('ddd.cache_directory');
+
+        return is_string($directory) && $directory !== '' ? $directory : 'bootstrap/cache/ddd';
     }
 }

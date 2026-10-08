@@ -3,7 +3,7 @@
 ## From 2.x to 3.0.0
 
 > [!NOTE]
-> v2 (`lunarstorm/laravel-ddd`) is end of life and does not support Laravel 13.24 or later ([#115](https://github.com/jaspertey/laravel-ddd/issues/115)). The `ddd:upgrade` command itself is unaffected on those Laravel versions, so the upgrade path below works regardless.
+> v2 (`lunarstorm/laravel-ddd`) is end of life and does not support Laravel 13.24 or later ([#115](https://github.com/teylabs/laravel-ddd/issues/115)). The `ddd:upgrade` command itself is unaffected on those Laravel versions, so the upgrade path below works regardless.
 
 ### Automated Upgrade (Recommended)
 As of v2.1.2, the `ddd:upgrade` command automates the entire upgrade. First update to v2.1.2, then run it:

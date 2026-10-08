@@ -2,6 +2,17 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
+## [3.2.1] - YYYY-MM-DD
+
+### Fixed
+- Removing a domain's PSR-4 autoload entry no longer deletes the entire `autoload` section of `composer.json`.
+- Empty JSON objects in `composer.json` (e.g. `"config": {}`) are written back as `{}` instead of `[]`, which Composer rejected after `ddd:install` reported success.
+- A null `ddd.cache_directory` now falls back to `bootstrap/cache/ddd`, instead of `ddd:clear` deleting `ddd-*.php` files in the project root.
+- A `ComposerManager` made for a specific `composer.json` now saves to that file rather than the application's `composer.json`.
+
+### Changed
+- The LICENSE copyright holder is now Jasper Tey, and the author email is jasper@teylabs.com.
+
 ## [3.2.0] - 2026-09-18
 
 ### Added
@@ -33,7 +44,7 @@ All notable changes to `laravel-ddd` will be documented in this file.
 
 ## [3.1.2] - 2026-08-08
 ### Fixed
-- `ddd:*` generator commands registering under their parent's `make:*` name (and hijacking the native framework generators) on Laravel 13.24+, which consolidated the framework generator command definitions into `$signature` (laravel/framework#60926). Generator names and the `--domain` option are now configured against the built command definition, which survives both declaration styles ([#115](https://github.com/jaspertey/laravel-ddd/issues/115)).
+- `ddd:*` generator commands registering under their parent's `make:*` name (and hijacking the native framework generators) on Laravel 13.24+, which consolidated the framework generator command definitions into `$signature` (laravel/framework#60926). Generator names and the `--domain` option are now configured against the built command definition, which survives both declaration styles ([#115](https://github.com/teylabs/laravel-ddd/issues/115)).
 
 ### Changed
 - `ddd:model` now returns `false` (exit code 0) when the model already exists, matching the behaviour and return type of the native `make:*` generators (previously exit code 1).
@@ -62,7 +73,7 @@ All notable changes to `laravel-ddd` will be documented in this file.
 ### Changed
 - Package renamed from `lunarstorm/laravel-ddd` to `tey/laravel-ddd`.
 - PHP namespace changed from `Lunarstorm\LaravelDDD` to `Tey\LaravelDDD`.
-- Repository moved to [jaspertey/laravel-ddd](https://github.com/jaspertey/laravel-ddd).
+- Repository moved under maintainer ownership; the current repository is [teylabs/laravel-ddd](https://github.com/teylabs/laravel-ddd).
 
 ## [2.1.2] - 2026-05-20
 ### Changed

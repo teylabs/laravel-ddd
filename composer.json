@@ -8,12 +8,12 @@
         "ddd",
         "domain driven design"
     ],
-    "homepage": "https://github.com/jaspertey/laravel-ddd",
+    "homepage": "https://github.com/teylabs/laravel-ddd",
     "license": "MIT",
     "authors": [
         {
             "name": "Jasper Tey",
-            "email": "jasper@jtey.com",
+            "email": "jasper@teylabs.com",
             "role": "Developer"
         }
     ],
