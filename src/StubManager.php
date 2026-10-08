@@ -25,6 +25,7 @@ class StubManager
             realpath(__DIR__.'/../stubs/value-object.stub') => 'value-object.stub',
             realpath(__DIR__.'/../stubs/view-model.stub') => 'view-model.stub',
             realpath(__DIR__.'/../stubs/base-view-model.stub') => 'base-view-model.stub',
+            realpath(__DIR__.'/../stubs/base-model.stub') => 'base-model.stub',
             realpath(__DIR__.'/../stubs/factory.stub') => 'factory.stub',
         ];
     }
