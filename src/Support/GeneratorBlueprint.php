@@ -122,12 +122,17 @@ class GeneratorBlueprint
 
         $namespace = $this->layer->namespaceForObject($this->type, $this->nameInput, $this->isAbsoluteName);
 
-        $fullyQualifiedName = str($this->normalizedName)
+        // A namespace-relative name ("\Custom\Invoice") already carries its folders in $namespace.
+        $name = ! $this->isAbsoluteName && str_starts_with($this->nameInput, '\\')
+            ? $this->baseName
+            : $this->normalizedName;
+
+        $fullyQualifiedName = str($name)
             ->start($namespace.'\\')
             ->toString();
 
         return new ObjectSchema(
-            name: $this->normalizedName,
+            name: $name,
             namespace: $namespace,
             fullyQualifiedName: $fullyQualifiedName,
             path: $this->layer->path($fullyQualifiedName),

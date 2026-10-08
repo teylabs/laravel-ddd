@@ -143,3 +143,21 @@ it('normalizes slashes in nested objects', function ($nameInput, $normalized) {
     ['Nested/Thing/Deeply', 'Nested\\Thing\\Deeply'],
     ['Nested\\Thing/Deeply', 'Nested\\Thing\\Deeply'],
 ]);
+
+it('places a namespace-relative object name once', function (string $type, string $name, string $fqn, string $path) {
+    $object = (new Domain('Billing'))->object($type, $name);
+
+    expect($object)
+        ->name->toBe('Probe')
+        ->fullyQualifiedName->toBe($fqn)
+        ->path->toBe(Path::normalize($path));
+})->with([
+    'model' => ['model', '\\Nested\\Probe', 'Domain\\Billing\\Nested\\Probe', 'src/Domain/Billing/Nested/Probe.php'],
+    'class' => ['class', '\\Nested\\Probe', 'Domain\\Billing\\Nested\\Probe', 'src/Domain/Billing/Nested/Probe.php'],
+]);
+
+it('keeps nested object names relative to the object namespace', function () {
+    expect((new Domain('Billing'))->object('model', 'Nested/Probe'))
+        ->name->toBe('Nested\\Probe')
+        ->fullyQualifiedName->toBe('Domain\\Billing\\Models\\Nested\\Probe');
+});

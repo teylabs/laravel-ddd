@@ -134,7 +134,9 @@ class Domain
 
         $namespace = $layer->namespaceForObject($type, $name, $absolute);
 
-        $baseName = str($name)->replace($namespace, '')
+        // A namespace-relative name ("\Nested\Probe") already carries its folders in $namespace.
+        $baseName = str(! $absolute && str_starts_with($name, '\\') ? class_basename($name) : $name)
+            ->replace($namespace, '')
             ->replace(['\\', '/'], '\\')
             ->trim('\\')
             ->when($type === 'factory', fn ($name) => $name->finish('Factory'))

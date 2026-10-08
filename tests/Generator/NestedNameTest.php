@@ -33,3 +33,15 @@ it('can generate nested objects', function ($type, $configuredNamespace, $nameIn
     'command Invoicing:Deep/Nested/InvoiceCommand' => ['command', 'Commands', 'Invoicing:Deep/Nested/InvoiceCommand', 'Domain\Invoicing\Commands\Deep\Nested', 'src/Domain/Invoicing/Commands/Deep/Nested/InvoiceCommand.php'],
     'class Invoicing:Deep/Nested/InvoiceClass' => ['class', '', 'Invoicing:Deep/Nested/InvoiceClass', 'Domain\Invoicing\Deep\Nested', 'src/Domain/Invoicing/Deep/Nested/InvoiceClass.php'],
 ]);
+
+it('places a namespace-relative name once', function (string $command, string $name, string $path, string $namespace) {
+    $this->artisan($command, ['name' => $name, '--domain' => 'Billing'])
+        ->assertSuccessful()
+        ->execute();
+
+    expect(file_exists(base_path($path)))->toBeTrue()
+        ->and(file_get_contents(base_path($path)))->toContain("namespace {$namespace};");
+})->with([
+    'model' => ['ddd:model', '\\Custom\\Invoice', 'src/Domain/Billing/Custom/Invoice.php', 'Domain\\Billing\\Custom'],
+    'class' => ['ddd:class', '\\Custom\\Thing', 'src/Domain/Billing/Custom/Thing.php', 'Domain\\Billing\\Custom'],
+]);
