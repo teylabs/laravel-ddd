@@ -167,7 +167,8 @@ it('can publish specific stubs interactively', function () {
             'Which stub should be published?',
             search: 'model',
             answers: $matches,
-            answer: ['model.stub']
+            // Laravel Prompts' multisearch answers with the option keys: stub paths.
+            answer: [array_search('model.stub', $matches)]
         )
         ->assertSuccessful()
         ->execute();

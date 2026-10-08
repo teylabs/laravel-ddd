@@ -80,8 +80,9 @@ class StubCommand extends Command
             required: true
         );
 
+        // multisearch answers with the option keys, which are the stub paths.
         return collect($stubs)
-            ->filter(fn ($stub, $path) => in_array($stub, $selected))
+            ->filter(fn ($stub, $path) => in_array($path, $selected, true))
             ->all();
     }
 
