@@ -2,16 +2,13 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
-## [3.2.1] - YYYY-MM-DD
+## [3.2.1] - 2026-10-08
 
 ### Fixed
 - Removing a domain's PSR-4 autoload entry no longer deletes the entire `autoload` section of `composer.json`.
 - Empty JSON objects in `composer.json` (e.g. `"config": {}`) are written back as `{}` instead of `[]`, which Composer rejected after `ddd:install` reported success.
 - A null `ddd.cache_directory` now falls back to `bootstrap/cache/ddd`, instead of `ddd:clear` deleting `ddd-*.php` files in the project root.
 - A `ComposerManager` made for a specific `composer.json` now saves to that file rather than the application's `composer.json`.
-
-### Changed
-- The LICENSE copyright holder is now Jasper Tey, and the author email is jasper@teylabs.com.
 
 ## [3.2.0] - 2026-09-18
 
