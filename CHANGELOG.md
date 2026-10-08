@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
-## [3.2.2] - YYYY-MM-DD
+## [3.2.2] - 2026-10-08
 
 ### Fixed
 - `ddd:dto` extends the configured `ddd.base_dto` (or nothing when it is null) instead of always extending `Spatie\LaravelData\Data`. The default configuration generates the same class as before.
