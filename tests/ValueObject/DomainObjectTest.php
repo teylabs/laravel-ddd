@@ -7,7 +7,7 @@ use Tey\LaravelDDD\ValueObjects\DomainObject;
 it('can create a domain object from resolvable class names', function (string $class, $domain, $relativeNamespace, $objectName) {
     $domainObject = DomainObject::fromClass($class);
 
-    $expectedPath = Path::join(DomainResolver::domainPath(), $domain, $relativeNamespace, $objectName.'.php');
+    $expectedPath = Path::join(...array_filter([DomainResolver::domainPath(), $domain, $relativeNamespace, $objectName.'.php'], 'strlen'));
 
     expect($domainObject)
         ->name->toEqual($objectName)
@@ -82,4 +82,12 @@ it('cannot create a domain object from unresolvable classes', function (string $
     ['Illuminate\Support\Str'],
     ['NotDomain\Invoicing\Models\InvoicePayment'],
     ['Invoice'],
+]);
+
+it('builds root-level object paths without an empty segment', function (string $class, ?string $type, string $path) {
+    expect(DomainObject::fromClass($class, $type)->path)->toBe(Path::normalize($path));
+})->with([
+    'root-level' => ['Domain\Billing\Probe', null, 'src/Domain/Billing/Probe.php'],
+    'ad hoc folder' => ['Domain\Billing\AdHoc\Probe', null, 'src/Domain/Billing/AdHoc/Probe.php'],
+    'explicit type without a folder' => ['Domain\Billing\Probe', 'blank', 'src/Domain/Billing/Probe.php'],
 ]);

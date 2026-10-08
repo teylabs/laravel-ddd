@@ -134,7 +134,7 @@ class DomainResolver
             ])->filter()->implode('\\');
 
             if ($name) {
-                $namespace .= "\\{$name}";
+                $namespace .= '\\'.Path::normalizeNamespace(trim($name, '\\/'));
             }
 
             return $namespace;
