@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
-## [3.3.0] - YYYY-MM-DD
+## [3.3.0] - 2026-10-08
 
 ### Changed
 - `ddd:*` generators exit 0 when the class already exists or the name is reserved by PHP, like `make:*`. Most of them used to exit 1, so scripts that check the exit code to detect an existing class need to check the output instead. The error is still printed and the existing file is left untouched.
