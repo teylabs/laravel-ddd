@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
+## [3.3.0] - YYYY-MM-DD
+
+### Changed
+- `ddd:*` generators exit 0 when the class already exists or the name is reserved by PHP, like `make:*`. Most of them used to exit 1, so scripts that check the exit code to detect an existing class need to check the output instead. The error is still printed and the existing file is left untouched.
+- `ddd:listener --event=InvoicePaid` listens for the listener's domain event (`Domain\Billing\Events\InvoicePaid`) instead of `App\Events\InvoicePaid`. A name containing a backslash is used as given, so pass `--event="App\Events\InvoicePaid"` to listen for an application event, including one picked from the interactive suggestions.
+
+### Upgrade notes
+- PHP and Laravel requirements are unchanged.
+
 ## [3.2.2] - 2026-10-08
 
 ### Fixed
