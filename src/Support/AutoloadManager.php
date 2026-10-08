@@ -130,7 +130,7 @@ class AutoloadManager
         ])->map(fn ($path) => Path::normalize($this->app->basePath($path)))->toArray();
     }
 
-    protected function getCustomLayerPaths(): array
+    public function getCustomLayerPaths(): array
     {
         return collect([
             ...array_values(config('ddd.layers', [])),
