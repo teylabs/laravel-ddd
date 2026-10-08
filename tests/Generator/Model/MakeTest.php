@@ -267,3 +267,23 @@ STUB;
     'stubs',
     'stubs/ddd',
 ]);
+
+it('references the domain factory when generating everything with --all', function () {
+    $domain = new Domain('Billing');
+
+    $model = $domain->model('Receipt');
+    $factory = $domain->factory('ReceiptFactory');
+
+    Artisan::call('ddd:model', [
+        'name' => 'Receipt',
+        '--domain' => 'Billing',
+        '--all' => true,
+    ]);
+
+    expect(file_exists(base_path($factory->path)))->toBeTrue();
+
+    expect(file_get_contents(base_path($model->path)))
+        ->toContain('use Tey\LaravelDDD\Factories\HasDomainFactory as HasFactory;')
+        ->toContain("/** @use HasFactory<\\{$factory->fullyQualifiedName}> */")
+        ->not->toContain('HasFactory<\Database\Factories');
+});

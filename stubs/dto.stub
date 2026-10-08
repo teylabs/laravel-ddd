@@ -1,10 +1,8 @@
 <?php
 
 namespace {{ namespace }};
-
-use Spatie\LaravelData\Data;
-
-class {{ class }} extends Data
+{{ baseClassImport }}
+class {{ class }}{{ extendsBaseClass }}
 {
     public function __construct()
     {

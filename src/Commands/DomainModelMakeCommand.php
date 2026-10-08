@@ -51,7 +51,8 @@ class DomainModelMakeCommand extends ModelMakeCommand
     {
         $replacements = parent::buildFactoryReplacements();
 
-        if ($this->option('factory')) {
+        // Native make:model sets --factory for --all only after the model is built.
+        if ($this->option('factory') || $this->option('all')) {
             $factoryNamespace = Str::start($this->blueprint->getFactoryFor($this->getNameInput())->fullyQualifiedName, '\\');
 
             $factoryCode = <<<EOT

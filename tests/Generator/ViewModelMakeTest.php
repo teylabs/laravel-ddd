@@ -142,3 +142,18 @@ it('does not attempt to generate base view models outside the domain layer', fun
     "Vendor\External\ViewModels\ViewModel" => ["Vendor\External\ViewModels\ViewModel"],
     "Illuminate\Support\Str" => ["Illuminate\Support\Str"],
 ]);
+
+it('generates view models without a base class when ddd.base_view_model is null', function () {
+    Config::set('ddd.base_view_model', null);
+
+    $this->artisan('ddd:view-model Invoicing:ShowInvoiceViewModel')
+        ->assertSuccessful()
+        ->execute();
+
+    $contents = file_get_contents(base_path('src/Domain/Invoicing/ViewModels/ShowInvoiceViewModel.php'));
+
+    expect($contents)
+        ->toContain('class ShowInvoiceViewModel')
+        ->not->toContain('extends')
+        ->not->toContain('use ');
+});

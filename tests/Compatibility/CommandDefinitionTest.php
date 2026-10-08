@@ -102,7 +102,6 @@ it('inherits each framework option and argument without altering its contract', 
     // the one place where upstream can move without the package following, so
     // any change to this list has to be a decision rather than a surprise.
     $documentedDivergences = [
-        'ddd:migration argument name: required=false, make:migration=true',
         'ddd:migration option create: valueOptional=false, make:migration=true',
         'ddd:migration option create: valueRequired=true, make:migration=false',
         'ddd:migration option path: valueOptional=false, make:migration=true',
