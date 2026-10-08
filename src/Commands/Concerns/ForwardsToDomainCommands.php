@@ -22,7 +22,12 @@ trait ForwardsToDomainCommands
             ? Str::beforeLast($this->getNameInput(), '/')
             : null;
 
-        return $subfolder ? "{$subfolder}/{$name}" : $name;
+        // make:model already passes the factory as "<Folder>/<Model>Factory".
+        if (! $subfolder || Str::startsWith($name, "{$subfolder}/")) {
+            return $name;
+        }
+
+        return "{$subfolder}/{$name}";
     }
 
     public function call($command, array $arguments = [])

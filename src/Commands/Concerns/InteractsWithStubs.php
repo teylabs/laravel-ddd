@@ -6,7 +6,7 @@ trait InteractsWithStubs
 {
     protected function fillPlaceholder($stub, $placeholder, $value)
     {
-        return str_replace(["{{$placeholder}}", "{{ $placeholder }}"], $value, $stub);
+        return str_replace(['{{'.$placeholder.'}}', '{{ '.$placeholder.' }}'], $value, $stub);
     }
 
     protected function preparePlaceholders(): array

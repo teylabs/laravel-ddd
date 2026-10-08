@@ -39,3 +39,15 @@ it('uses the qualified factory namespace with custom configuration and a publish
         ->toContain('// Published factory stub');
     assertParses($path);
 });
+
+it('generates the factory of a nested model once under its folder', function () {
+    expect(Artisan::call('ddd:model', ['name' => 'Billing:Nested/ProbeRecord', '--factory' => true]))->toBe(0);
+
+    $factoryPath = base_path('src/Domain/Billing/Database/Factories/Nested/ProbeRecordFactory.php');
+
+    expect($factoryPath)->toBeFile()
+        ->and(base_path('src/Domain/Billing/Database/Factories/Nested/Nested'))->not->toBeDirectory()
+        ->and(file_get_contents($factoryPath))->toContain('namespace Domain\Billing\Database\Factories\Nested;')
+        ->and(file_get_contents(base_path('src/Domain/Billing/Models/Nested/ProbeRecord.php')))
+        ->toContain('HasFactory<\Domain\Billing\Database\Factories\Nested\ProbeRecordFactory>');
+});

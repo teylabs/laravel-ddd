@@ -198,3 +198,159 @@ it('can detect domain namespace from composer.json', function () {
 
     unlink($configPath);
 });
+
+function writeTestComposerPsr4(array $psr4): void
+{
+    file_put_contents(base_path('composer.json'), json_encode([
+        'name' => 'laravel/laravel',
+        'autoload' => ['psr-4' => $psr4],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+}
+
+it('exits when given the exit action', function () {
+    $this->artisan('ddd:config exit')
+        ->expectsOutput('Goodbye!')
+        ->assertSuccessful()
+        ->execute();
+});
+
+it('reports a missing composer.json for actions that need it', function (string $command) {
+    unlink(base_path('composer.json'));
+
+    $this->artisan($command)
+        ->expectsOutputToContain('composer.json not found.')
+        ->assertFailed()
+        ->execute();
+})->with([
+    'detect' => ['ddd:config detect'],
+    'wizard' => ['ddd:config wizard'],
+    'composer' => ['ddd:config composer'],
+    'layers' => ['ddd:config --layer=Support:src/Support'],
+]);
+
+it('runs actions that do not need composer.json without it', function () {
+    unlink(base_path('composer.json'));
+
+    $this->artisan('ddd:config exit')
+        ->expectsOutput('Goodbye!')
+        ->assertSuccessful()
+        ->execute();
+
+    $this->artisan('ddd:config update')
+        ->expectsQuestion('Are you sure you want to update ddd.php and merge with latest copy from the package?', false)
+        ->expectsOutput('Configuration update aborted.')
+        ->assertSuccessful()
+        ->execute();
+});
+
+it('detects the primary directory of a list-valued domain path', function () {
+    writeTestComposerPsr4([
+        'App\\' => 'app/',
+        'Domain\\' => ['lib/CustomDomain', 'lib/OtherDomain'],
+    ]);
+
+    $configPath = config_path('ddd.php');
+
+    $this->artisan('ddd:config detect')
+        ->expectsOutputToContain('lib/CustomDomain')
+        ->expectsQuestion('Update configuration with these values?', true)
+        ->expectsOutput('Configuration updated: '.$configPath)
+        ->assertSuccessful()
+        ->execute();
+
+    expect(data_get(DDD::config()->get(), 'domain_path'))->toBe('lib/CustomDomain');
+
+    unlink($configPath);
+});
+
+it('runs the wizard with a list-valued domain path', function () {
+    writeTestComposerPsr4([
+        'App\\' => 'app/',
+        'Domain\\' => ['src/Domain', 'lib/Domain'],
+    ]);
+
+    $configPath = config_path('ddd.php');
+
+    $this->artisan('ddd:config wizard')
+        ->expectsQuestion('Domain Path', 'src/Domain')
+        ->expectsQuestion('Domain Namespace', 'Domain')
+        ->expectsQuestion('Path to Application Layer', null)
+        ->expectsQuestion('Custom Layers (Optional)', [])
+        ->expectsOutput("Configuration updated: {$configPath}")
+        ->assertSuccessful()
+        ->execute();
+
+    expect(data_get(DDD::config()->get(), 'domain_path'))->toBe('src/Domain');
+
+    unlink($configPath);
+})->skip(fn () => ! ConfigCommand::hasRequiredVersionOfLaravelPrompts());
+
+it('saves the selected custom layers as a namespace to path map', function () {
+    $configPath = config_path('ddd.php');
+
+    $this->artisan('ddd:config wizard')
+        ->expectsQuestion('Domain Path', 'src/Domain')
+        ->expectsQuestion('Domain Namespace', 'Domain')
+        ->expectsQuestion('Path to Application Layer', null)
+        ->expectsQuestion('Custom Layers (Optional)', ['src/Infrastructure', 'src/Support'])
+        ->expectsOutput("Configuration updated: {$configPath}")
+        ->assertSuccessful()
+        ->execute();
+
+    expect(data_get(DDD::config()->get(), 'layers'))->toBe([
+        'Infrastructure' => 'src/Infrastructure',
+        'Support' => 'src/Support',
+    ]);
+
+    unlink($configPath);
+})->skip(fn () => ! ConfigCommand::hasRequiredVersionOfLaravelPrompts());
+
+it('runs the wizard when composer.json has no App namespace', function () {
+    writeTestComposerPsr4([
+        'Domain\\' => 'src/Domain',
+    ]);
+
+    $configPath = config_path('ddd.php');
+
+    $this->artisan('ddd:config wizard')
+        ->expectsQuestion('Domain Path', 'src/Domain')
+        ->expectsQuestion('Domain Namespace', 'Domain')
+        ->expectsQuestion('Path to Application Layer', 'src/Application')
+        ->expectsQuestion('Application Layer Namespace', 'Application')
+        ->expectsQuestion('Custom Layers (Optional)', [])
+        ->expectsOutput("Configuration updated: {$configPath}")
+        ->assertSuccessful()
+        ->execute();
+
+    expect(data_get(DDD::config()->get(), 'application_namespace'))->toBe('Application');
+
+    unlink($configPath);
+})->skip(fn () => ! ConfigCommand::hasRequiredVersionOfLaravelPrompts());
+
+it('registers the full namespace of a nested layer when syncing composer.json', function () {
+    file_put_contents(config_path('ddd.php'), <<<'PHP'
+<?php
+return [
+    'domain_path' => 'src/Domain',
+    'domain_namespace' => 'Domain',
+    'layers' => [
+        'Support\\Foo' => 'src/Support/Foo',
+    ],
+];
+PHP);
+
+    $this->artisan('config:cache')->assertSuccessful()->execute();
+
+    $this->artisan('ddd:config composer')
+        ->assertSuccessful()
+        ->execute();
+
+    $psr4 = json_decode(file_get_contents(base_path('composer.json')), true)['autoload']['psr-4'];
+
+    expect($psr4)->toHaveKey('Support\\Foo\\', 'src/Support/Foo')
+        ->not->toHaveKey('Support\\');
+
+    $this->artisan('config:clear')->assertSuccessful()->execute();
+
+    unlink(config_path('ddd.php'));
+});

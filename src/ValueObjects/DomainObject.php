@@ -85,13 +85,13 @@ class DomainObject
             $objectNamespace = '';
         }
 
-        // Reconstruct the path
-        $path = Path::join(
+        // Reconstruct the path; root-level objects have no object namespace to join.
+        $path = Path::join(...array_filter([
             DomainResolver::domainPath(),
             $domainName,
             $objectNamespace,
             "{$objectName}.php",
-        );
+        ], 'strlen'));
 
         // dump([
         //     'fullyQualifiedClass' => $fullyQualifiedClass,

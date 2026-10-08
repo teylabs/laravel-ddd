@@ -2,6 +2,35 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
+## [3.2.2] - YYYY-MM-DD
+
+### Fixed
+- `ddd:dto` extends the configured `ddd.base_dto` (or nothing when it is null) instead of always extending `Spatie\LaravelData\Data`. The default configuration generates the same class as before.
+- `ddd:view-model` generates a view model without a base class when `ddd.base_view_model` is null, instead of failing with a `TypeError`.
+- `ddd:model --all` references the domain factory through `HasDomainFactory`, as `--factory` does, instead of `Database\Factories\…`.
+- `ddd:model` with a nested name and `--factory` writes the factory once under the model's folder, matching the class the model references, instead of under a repeated folder (`Factories/Nested/Nested/`).
+- A name starting with a backslash (`ddd:model Billing:\Custom\Invoice`) is placed once under the domain (`Domain\Billing\Custom\Invoice`) instead of repeating its folder, and `Domain::object()` describes the same class.
+- `ddd:migration` requires a name, and asks for one interactively, instead of writing `<timestamp>_.php`.
+- `ddd:migration` honours `--path` and `--realpath` like `make:migration`.
+- An empty `ddd.domain_namespace` or `ddd.application_namespace` is refused with an error naming the key, instead of reporting success and writing a class that cannot be loaded.
+- Published stubs using compact placeholders such as `{{extends}}` are filled instead of being left with stray braces.
+- Interactive `ddd:stub` publishes the stubs you select; it published none.
+- `ddd:stub` lists and publishes `base-model.stub`.
+- `ddd:config exit` exits instead of opening the menu.
+- `ddd:config` reports "composer.json not found." and fails when the file is missing, instead of a PHP warning and a `TypeError`.
+- `ddd:config detect` and the configuration wizard use the first directory of a PSR-4 entry that lists several, instead of crashing.
+- The configuration wizard saves custom layers as a namespace => path map, the shape `config/ddd.php` uses, and no longer warns when `composer.json` has no `App` namespace.
+- `ddd:config composer` registers a nested layer under its full namespace (`Support\Foo\`) instead of its root namespace.
+- `ComposerManager` throws a `RuntimeException` naming the file when `composer.json` can't be read or isn't a JSON object, instead of a `TypeError`.
+- PSR-4 paths guessed for a new namespace are checked against the application base path, not the current working directory.
+- `Autoload::getCustomLayerPaths()` returns the custom layer paths; the method was protected, so the facade call failed.
+- `DomainResolver::getDomainObjectNamespace()` no longer leaves a `/` in the namespace, and `DomainObject::fromClass()` paths for root-level classes no longer contain `//`.
+- Subscribing `MigrationsPrunedSubscriber` more than once no longer prunes and announces each domain migration directory twice.
+
+### Upgrade notes
+- PHP and Laravel requirements are unchanged.
+- A `dto.stub` published before 3.2.2 still hard-codes `extends Data`. Republish it with `php artisan ddd:stub dto --force` to use `ddd.base_dto`, then reapply any customizations.
+
 ## [3.2.1] - 2026-10-08
 
 ### Fixed

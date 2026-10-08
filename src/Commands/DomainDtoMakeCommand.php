@@ -46,6 +46,8 @@ class DomainDtoMakeCommand extends DomainGeneratorCommand
 
         return [
             'extends' => filled($baseClass) ? " extends {$baseClass}" : '',
+            'baseClassImport' => filled($baseClass) ? "\nuse ".ltrim($baseClass, '\\').";\n" : '',
+            'extendsBaseClass' => filled($baseClass) ? ' extends '.class_basename($baseClass) : '',
         ];
     }
 }

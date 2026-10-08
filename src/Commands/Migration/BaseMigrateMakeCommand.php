@@ -3,6 +3,7 @@
 namespace Tey\LaravelDDD\Commands\Migration;
 
 use Illuminate\Database\Console\Migrations\MigrateMakeCommand;
+use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 
 class BaseMigrateMakeCommand extends MigrateMakeCommand
@@ -12,7 +13,7 @@ class BaseMigrateMakeCommand extends MigrateMakeCommand
     protected function getArguments()
     {
         return [
-            ['name', InputOption::VALUE_REQUIRED, 'The name of the migration'],
+            ['name', InputArgument::REQUIRED, 'The name of the migration'],
         ];
     }
 

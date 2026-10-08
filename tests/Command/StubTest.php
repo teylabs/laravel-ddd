@@ -167,7 +167,8 @@ it('can publish specific stubs interactively', function () {
             'Which stub should be published?',
             search: 'model',
             answers: $matches,
-            answer: ['model.stub']
+            // Laravel Prompts' multisearch answers with the option keys: stub paths.
+            answer: [array_search('model.stub', $matches)]
         )
         ->assertSuccessful()
         ->execute();
@@ -180,3 +181,24 @@ it('can publish specific stubs interactively', function () {
 
     expect($stubFiles[0]->getFilename())->toEqual('model.stub');
 })->skip(fn () => Feature::PromptMultiSearchAssertion->missing(), 'Multi-search assertion not available');
+
+it('lists and publishes every stub that ships with the package', function () {
+    $shipped = collect(File::files(app('ddd')->packagePath('stubs')))
+        ->map(fn ($file) => $file->getFilename())
+        ->sort()
+        ->values()
+        ->all();
+
+    expect(collect(app('ddd')->stubs()->dddStubs())->sort()->values()->all())->toBe($shipped);
+
+    $this->artisan('ddd:stub --list')
+        ->expectsOutputToContain('base-model')
+        ->assertSuccessful()
+        ->execute();
+
+    $this->artisan('ddd:stub base-model')
+        ->assertSuccessful()
+        ->execute();
+
+    expect(app()->basePath('stubs/ddd/base-model.stub'))->toBeFile();
+});

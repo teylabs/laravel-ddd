@@ -3,6 +3,7 @@
 namespace Tey\LaravelDDD\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Input\InputArgument;
@@ -43,8 +44,6 @@ class ConfigCommand extends Command
 
     public function handle(): int
     {
-        $this->composer = DDD::composer()->usingOutput($this->output);
-
         $action = str($this->argument('action'))->trim()->lower()->toString();
 
         if (! $action && $this->option('layer')) {
@@ -57,6 +56,7 @@ class ConfigCommand extends Command
             'detect' => $this->detect(),
             'composer' => $this->syncComposer(),
             'layers' => $this->layers(),
+            'exit' => $this->exit(),
             default => $this->home(),
         };
     }
@@ -81,9 +81,35 @@ class ConfigCommand extends Command
         };
     }
 
+    /**
+     * Load composer.json for the actions that read or write it.
+     */
+    protected function loadComposer(): bool
+    {
+        if (! file_exists($this->laravel->basePath('composer.json'))) {
+            $this->error('composer.json not found.');
+
+            return false;
+        }
+
+        $this->composer = DDD::composer()->usingOutput($this->output);
+
+        return true;
+    }
+
+    /**
+     * The primary directory of a PSR-4 path, which may be a list of directories.
+     */
+    protected function primaryPath(mixed $path): ?string
+    {
+        return is_array($path) ? Arr::first($path) : $path;
+    }
+
     protected function layers()
     {
-        $layers = $this->option('layer');
+        if (! $this->loadComposer()) {
+            return self::FAILURE;
+        }
 
         if ($layers = $this->option('layer')) {
             foreach ($layers as $layer) {
@@ -116,9 +142,13 @@ class ConfigCommand extends Command
             return self::FAILURE;
         }
 
+        if (! $this->loadComposer()) {
+            return self::FAILURE;
+        }
+
         $namespaces = collect($this->composer->getPsr4Namespaces());
 
-        $layers = $namespaces->map(fn ($path, $namespace) => new Layer($namespace, $path));
+        $layers = $namespaces->map(fn ($path, $namespace) => new Layer($namespace, $this->primaryPath($path)));
         $laravelAppLayer = $layers->first(fn (Layer $layer) => str($layer->namespace)->exactly('App'));
         $possibleDomainLayers = $layers->filter(fn (Layer $layer) => str($layer->namespace)->startsWith('Domain'));
         $possibleApplicationLayers = $layers->filter(fn (Layer $layer) => str($layer->namespace)->startsWith('App'));
@@ -235,11 +265,11 @@ class ConfigCommand extends Command
                 fn ($responses) => filled($responses['application_path']),
                 function ($responses) use ($choices, $laravelAppLayer) {
                     $applicationPath = $responses['application_path'];
-                    $laravelAppPath = $laravelAppLayer->path;
+                    $laravelAppPath = $laravelAppLayer?->path;
 
                     $namespace = match (true) {
-                        str($applicationPath)->exactly($laravelAppPath) => $laravelAppLayer->namespace,
-                        str($applicationPath)->startsWith("{$laravelAppPath}/") => str($applicationPath)->studly()->toString(),
+                        $laravelAppLayer && str($applicationPath)->exactly($laravelAppPath) => $laravelAppLayer->namespace,
+                        $laravelAppLayer && str($applicationPath)->startsWith("{$laravelAppPath}/") => str($applicationPath)->studly()->toString(),
                         default => str($applicationPath)->classBasename()->studly()->toString(),
                     };
 
@@ -272,6 +302,13 @@ class ConfigCommand extends Command
             $responses[$key] = $value ?: $config->get($key);
         }
 
+        // The layers prompt answers with paths; config/ddd.php maps namespace => path.
+        $responses['layers'] = collect($responses['layers'] ?? [])
+            ->mapWithKeys(fn ($path, $namespace) => [
+                is_string($namespace) ? $namespace : str($path)->basename()->studly()->toString() => $path,
+            ])
+            ->all();
+
         DDD::config()->fill($responses)->save();
 
         $this->info('Configuration updated: '.config_path('ddd.php'));
@@ -281,12 +318,16 @@ class ConfigCommand extends Command
 
     protected function detect(): int
     {
+        if (! $this->loadComposer()) {
+            return self::FAILURE;
+        }
+
         $search = ['Domain', 'Domains'];
 
         $detected = [];
 
         foreach ($search as $namespace) {
-            if ($path = $this->composer->getAutoloadPath($namespace)) {
+            if ($path = $this->primaryPath($this->composer->getAutoloadPath($namespace))) {
                 $detected['domain_path'] = $path;
                 $detected['domain_namespace'] = $namespace;
                 break;
@@ -335,6 +376,10 @@ class ConfigCommand extends Command
 
     protected function syncComposer(): int
     {
+        if (! $this->loadComposer()) {
+            return self::FAILURE;
+        }
+
         $namespaces = [
             config('ddd.domain_namespace', 'Domain') => config('ddd.domain_path', 'src/Domain'),
             config('ddd.application_namespace', 'App\\Modules') => config('ddd.application_path', 'app/Modules'),
@@ -363,7 +408,7 @@ class ConfigCommand extends Command
                 continue;
             }
 
-            $this->composer->registerPsr4Autoload($rootNamespace, $path);
+            $this->composer->registerPsr4Autoload($namespace, $path);
 
             $results[] = [$namespace, $path, 'Added'];
 

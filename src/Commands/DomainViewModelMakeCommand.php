@@ -72,6 +72,11 @@ class DomainViewModelMakeCommand extends DomainGeneratorCommand
     {
         $baseViewModel = config('ddd.base_view_model');
 
+        // Without a configured base, view models extend nothing.
+        if (blank($baseViewModel)) {
+            return false;
+        }
+
         // If the class exists, we don't need to create it.
         if (class_exists($baseViewModel)) {
             return false;

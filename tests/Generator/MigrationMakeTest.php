@@ -3,6 +3,8 @@
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\File;
+use Tey\LaravelDDD\Commands\Migration\DomainMigrateMakeCommand;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Support\DomainMigration;
 use Tey\LaravelDDD\Support\Path;
@@ -82,3 +84,44 @@ it('discovers domain migration folders', function ($domainPath, $domainRoot) {
             ->toBeTrue('Expecting path to contain one of the expected folder patterns');
     }
 })->with('domainPaths');
+
+it('requires a migration name', function () {
+    $argument = $this->app->make(DomainMigrateMakeCommand::class)
+        ->getDefinition()
+        ->getArgument('name');
+
+    expect($argument->isRequired())->toBeTrue();
+
+    $migrationFolder = base_path(Path::normalize('src/Domain/Invoicing/'.config('ddd.namespaces.migration')));
+
+    $this->artisan('ddd:migration', ['--domain' => 'Invoicing'])
+        ->expectsQuestion('What should the migration be named?', 'create_probes_table')
+        ->assertSuccessful()
+        ->execute();
+
+    expect(glob("{$migrationFolder}/*_create_probes_table.php"))->toHaveCount(1)
+        ->and(glob("{$migrationFolder}/*_.php"))->toHaveCount(0);
+});
+
+it('honours --path and --realpath like make:migration', function (bool $realpath) {
+    $relative = 'database/custom-migrations';
+    $target = base_path($relative);
+
+    File::deleteDirectory($target);
+
+    $this->artisan('ddd:migration', [
+        'name' => 'Invoicing:create_custom_probes_table',
+        '--path' => $realpath ? $target : $relative,
+        '--realpath' => $realpath,
+    ])->assertSuccessful()->execute();
+
+    expect(glob("{$target}/*_create_custom_probes_table.php"))->toHaveCount(1);
+
+    expect(glob(base_path(Path::normalize('src/Domain/Invoicing/'.config('ddd.namespaces.migration'))).'/*_create_custom_probes_table.php'))
+        ->toHaveCount(0);
+
+    File::deleteDirectory($target);
+})->with([
+    'relative path' => [false],
+    'real path' => [true],
+]);

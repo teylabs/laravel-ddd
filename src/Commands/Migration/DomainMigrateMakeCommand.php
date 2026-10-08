@@ -18,6 +18,11 @@ class DomainMigrateMakeCommand extends BaseMigrateMakeCommand
      */
     protected function getMigrationPath()
     {
+        // An explicit --path (with or without --realpath) wins, as with make:migration.
+        if (! is_null($this->input->getOption('path'))) {
+            return parent::getMigrationPath();
+        }
+
         if ($this->blueprint) {
             return $this->laravel->basePath($this->blueprint->getMigrationPath());
         }

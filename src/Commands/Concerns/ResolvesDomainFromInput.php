@@ -7,6 +7,7 @@ use ReflectionClass;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Tey\LaravelDDD\Exceptions\EmptyRootNamespace;
 use Tey\LaravelDDD\Support\DomainResolver;
 use Tey\LaravelDDD\Support\GeneratorBlueprint;
 
@@ -26,6 +27,10 @@ trait ResolvesDomainFromInput
             // Keep preparation in handle(): consumer overrides may still need
             // to inspect or rewrite raw input before delegating to the parent.
             return parent::execute($input, $output);
+        } catch (EmptyRootNamespace $e) { // @phpstan-ignore catch.neverThrown (thrown by the blueprint in handle())
+            $this->components->error($e->getMessage());
+
+            return self::FAILURE;
         } finally {
             $this->blueprint = null;
         }

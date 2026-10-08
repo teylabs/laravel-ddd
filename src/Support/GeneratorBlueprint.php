@@ -4,6 +4,8 @@ namespace Tey\LaravelDDD\Support;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\App;
+use Tey\LaravelDDD\Enums\LayerType;
+use Tey\LaravelDDD\Exceptions\EmptyRootNamespace;
 use Tey\LaravelDDD\ValueObjects\CommandContext;
 use Tey\LaravelDDD\ValueObjects\ObjectSchema;
 
@@ -66,6 +68,27 @@ class GeneratorBlueprint
 
     public static function capture(Command $command) {}
 
+    /**
+     * An empty domain or application namespace would generate unparsable classes.
+     * Migrations are anonymous classes and need no namespace.
+     */
+    protected function ensureRootNamespaceIsConfigured(): void
+    {
+        if ($this->type === 'migration') {
+            return;
+        }
+
+        $configKey = match ($this->layer->type) {
+            LayerType::Domain => 'ddd.domain_namespace',
+            LayerType::Application => 'ddd.application_namespace',
+            default => null,
+        };
+
+        if ($configKey && blank(config($configKey))) {
+            throw EmptyRootNamespace::for($configKey);
+        }
+    }
+
     protected function guessObjectType(): string
     {
         return match ($this->command->name) {
@@ -95,14 +118,21 @@ class GeneratorBlueprint
             return $blueprint;
         }
 
+        $this->ensureRootNamespaceIsConfigured();
+
         $namespace = $this->layer->namespaceForObject($this->type, $this->nameInput, $this->isAbsoluteName);
 
-        $fullyQualifiedName = str($this->normalizedName)
+        // A namespace-relative name ("\Custom\Invoice") already carries its folders in $namespace.
+        $name = ! $this->isAbsoluteName && str_starts_with($this->nameInput, '\\')
+            ? $this->baseName
+            : $this->normalizedName;
+
+        $fullyQualifiedName = str($name)
             ->start($namespace.'\\')
             ->toString();
 
         return new ObjectSchema(
-            name: $this->normalizedName,
+            name: $name,
             namespace: $namespace,
             fullyQualifiedName: $fullyQualifiedName,
             path: $this->layer->path($fullyQualifiedName),
