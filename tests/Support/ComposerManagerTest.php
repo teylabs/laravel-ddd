@@ -127,3 +127,34 @@ it('saves to the composer file it was made from', function () {
         file_put_contents(base_path('composer.json'), $baseComposerContents);
     }
 });
+
+it('rejects a composer.json that is not a JSON object', function (?string $json, string $reason) {
+    if ($json !== null) {
+        writeComposerFixture($this->composerFile, $json);
+    }
+
+    expect(fn () => ComposerManager::make($this->composerFile))
+        ->toThrow(RuntimeException::class, $this->composerFile)
+        ->toThrow(RuntimeException::class, $reason);
+})->with([
+    'invalid json' => ['{"autoload": ', 'Syntax error'],
+    'a scalar' => ['123', 'not a JSON object'],
+    'missing' => [null, 'could not be read'],
+]);
+
+it('guesses psr-4 paths relative to the application base path', function () {
+    $folder = 'ComposerGuessProbe'.getmypid();
+
+    File::ensureDirectoryExists(base_path($folder));
+
+    try {
+        expect(getcwd())->not->toBe(base_path());
+
+        $manager = ComposerManager::make(base_path('composer.json'))
+            ->registerPsr4Autoload($folder, null);
+
+        expect($manager->getAutoloadPath($folder))->toBe($folder);
+    } finally {
+        File::deleteDirectory(base_path($folder));
+    }
+});

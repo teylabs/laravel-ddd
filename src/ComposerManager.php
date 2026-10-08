@@ -6,6 +6,7 @@ use Illuminate\Console\OutputStyle;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Composer;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tey\LaravelDDD\Support\Path;
 
 class ComposerManager
@@ -30,9 +31,23 @@ class ComposerManager
 
         $this->composerFile = $composerFile ?? app()->basePath('composer.json');
 
-        $contents = file_get_contents($this->composerFile);
+        $contents = is_file($this->composerFile) ? @file_get_contents($this->composerFile) : false;
 
-        $this->data = json_decode($contents, true);
+        if ($contents === false) {
+            throw new RuntimeException("{$this->composerFile} could not be read.");
+        }
+
+        $data = json_decode($contents, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new RuntimeException("{$this->composerFile} is not valid JSON: ".json_last_error_msg());
+        }
+
+        if (! is_array($data)) {
+            throw new RuntimeException("{$this->composerFile} is not a JSON object.");
+        }
+
+        $this->data = $data;
 
         $this->shape = json_decode($contents);
     }
@@ -59,9 +74,9 @@ class ComposerManager
         $relativePath = Str::rtrim(Path::fromNamespace($namespace), '/\\');
 
         foreach ($rootFolders as $folder) {
-            $path = Path::join($folder, $relativePath);
+            $path = $folder === '' ? $relativePath : Path::join($folder, $relativePath);
 
-            if (is_dir($path)) {
+            if (is_dir(app()->basePath($path))) {
                 return $this->normalizePathForComposer($path);
             }
         }
