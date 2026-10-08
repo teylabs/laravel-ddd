@@ -90,7 +90,9 @@ it('extends the configured base data transfer object', function (?string $baseDt
         config('ddd.namespaces.data_transfer_object'),
     ]);
 
-    expect(str_replace("\r\n", "\n", file_get_contents($path)))->toBe(str_replace('{{ namespace }}', $namespace, $expected));
+    // Windows checks out both the stub and this file with CRLF, so compare with LF on both sides.
+    expect(str_replace("\r\n", "\n", file_get_contents($path)))
+        ->toBe(str_replace(["\r\n", '{{ namespace }}'], ["\n", $namespace], $expected));
 })->with([
     'default' => ['Spatie\LaravelData\Data', <<<'PHP'
 <?php
