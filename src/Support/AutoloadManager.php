@@ -2,6 +2,7 @@
 
 namespace Tey\LaravelDDD\Support;
 
+use ArrayObject;
 use Closure;
 use Composer\Autoload\ClassLoader;
 use Illuminate\Container\Container;
@@ -9,46 +10,66 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Conditionable;
 use Mockery;
+use ReflectionClass;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 use Tey\LaravelDDD\Facades\DDD;
 use Tey\LaravelDDD\Factories\DomainFactory;
-use Tey\LaravelDDD\ValueObjects\DomainObject;
+use Tey\LaravelDDD\Support\Layout\DddLayout;
+use Tey\LaravelDDD\Support\Layout\DddReverse;
+use Tey\Mod\Discovery\Discovery;
+use Tey\Mod\Discovery\DiscoveryDefinition;
+use Tey\Mod\Discovery\DiscoveryOptions;
+use Tey\Mod\Discovery\DiscoveryType;
+use Tey\Mod\Exceptions\InvalidDiscoveryCache;
+use Tey\Mod\Layout\CompiledRoot;
 use Throwable;
+use WeakMap;
 
 class AutoloadManager
 {
     use Conditionable;
 
+    /** The discovered families, the config key that enables each and the mod discovery type. */
+    private const FAMILIES = [
+        'providers' => ['provider', 'provider'],
+        'commands' => ['command', 'command'],
+        'listeners' => ['listener', 'listener'],
+    ];
+
     protected $app;
 
     protected string $appNamespace;
 
-    protected static array $registeredCommands = [];
+    protected array $registeredCommands = [];
 
-    protected static array $registeredProviders = [];
+    protected array $registeredProviders = [];
 
-    protected static array $resolvedPolicies = [];
+    protected array $resolvedPolicies = [];
 
-    protected static array $resolvedFactories = [];
+    protected array $resolvedFactories = [];
 
     protected static ?Closure $policyResolver = null;
 
     protected static ?Closure $factoryResolver = null;
 
-    protected static array $registeredListeners = [];
+    protected array $registeredListeners = [];
 
-    protected static array $registeredSubscribers = [];
+    protected array $registeredSubscribers = [];
 
     protected bool $booted = false;
 
     protected bool $consoleBooted = false;
 
     protected bool $ran = false;
+
+    /** @var WeakMap<object, ArrayObject<string, true>>|null successful event registrations per dispatcher */
+    private static ?WeakMap $registeredEvents = null;
 
     public function __construct(protected ?Container $container = null)
     {
@@ -95,23 +116,35 @@ class AutoloadManager
 
     protected function flush()
     {
-        foreach (static::$registeredProviders as $provider) {
+        foreach ($this->registeredProviders as $provider) {
             $this->app?->forgetInstance($provider);
         }
 
-        static::$registeredProviders = [];
+        $this->registeredProviders = [];
 
-        static::$registeredCommands = [];
+        $this->registeredCommands = [];
 
-        static::$resolvedPolicies = [];
+        $this->resolvedPolicies = [];
 
-        static::$resolvedFactories = [];
+        $this->resolvedFactories = [];
 
-        static::$registeredListeners = [];
+        $this->registeredListeners = [];
 
-        static::$registeredSubscribers = [];
+        $this->registeredSubscribers = [];
+
+        ArtisanCommands::booted($this->app, $this);
 
         return $this;
+    }
+
+    /**
+     * Whether a discovered family is on: true, or a list of paths (manual discovery).
+     */
+    private function enabled(string $family): bool
+    {
+        $value = config('ddd.autoload.'.$family);
+
+        return $value === true || (is_array($value) && $value !== []);
     }
 
     protected function normalizePaths($path): array
@@ -139,16 +172,10 @@ class AutoloadManager
 
     protected function handleProviders()
     {
-        $providers = DomainCache::has('domain-providers')
-            ? DomainCache::get('domain-providers')
-            : $this->discoverProviders();
-
-        if (DomainCache::has('domain-providers') && ! $this->cachedClassesExist($providers)) {
-            $providers = $this->discoverProviders();
-        }
+        $providers = $this->cached('providers') ?? $this->discoverProviders();
 
         foreach ($providers as $provider) {
-            static::$registeredProviders[$provider] = $provider;
+            $this->registeredProviders[$provider] = $provider;
         }
 
         return $this;
@@ -156,16 +183,10 @@ class AutoloadManager
 
     protected function handleCommands()
     {
-        $commands = DomainCache::has('domain-commands')
-            ? DomainCache::get('domain-commands')
-            : $this->discoverCommands();
-
-        if (DomainCache::has('domain-commands') && ! $this->cachedClassesExist($commands)) {
-            $commands = $this->discoverCommands();
-        }
+        $commands = $this->cached('commands') ?? $this->discoverCommands();
 
         foreach ($commands as $command) {
-            static::$registeredCommands[$command] = $command;
+            $this->registeredCommands[$command] = $command;
         }
 
         return $this;
@@ -177,14 +198,17 @@ class AutoloadManager
             $this->boot();
         }
 
-        $registration = new DomainRegistration;
+        foreach ($this->registeredProviders as $provider) {
+            $this->app->register($provider);
+        }
 
-        $registration->providers($this->app, static::$registeredProviders);
-        $registration->listeners(static::$registeredListeners);
-        $registration->subscribers(static::$registeredSubscribers);
+        $this->registerListeners($this->registeredListeners);
+        $this->registerSubscribers($this->registeredSubscribers);
 
         if ($this->app->runningInConsole() && ! $this->isConsoleBooted()) {
-            $registration->commands(fn () => static::$registeredCommands);
+            // Resolved when Artisan starts: a later boot of another manager for
+            // this application replaces what Artisan sees.
+            ArtisanCommands::hook($this->app, $this);
 
             $this->consoleBooted = true;
         }
@@ -196,35 +220,34 @@ class AutoloadManager
 
     public function getRegisteredCommands(): array
     {
-        return static::$registeredCommands;
+        return $this->registeredCommands;
     }
 
     public function getRegisteredProviders(): array
     {
-        return static::$registeredProviders;
+        return $this->registeredProviders;
     }
 
     public function getResolvedPolicies(): array
     {
-        return static::$resolvedPolicies;
+        return $this->resolvedPolicies;
     }
 
     public function getResolvedFactories(): array
     {
-        return static::$resolvedFactories;
+        return $this->resolvedFactories;
     }
 
     protected function handlePolicies()
     {
-        Gate::guessPolicyNamesUsing(static::$policyResolver = function (string $class): array|string {
-            if ($model = DomainObject::fromClass($class, 'model')) {
-                $resolved = (new Domain($model->domain))
-                    ->object('policy', "{$model->name}Policy")
-                    ->fullyQualifiedName;
+        $resolved = &$this->resolvedPolicies;
 
-                static::$resolvedPolicies[$class] = $resolved;
+        Gate::guessPolicyNamesUsing(static::$policyResolver = function (string $class) use (&$resolved): array|string {
+            // Domain-root models only (v3 DomainObject::fromClass); others take the native guess below.
+            if (DddReverse::current()->objectFromClass($class, 'model') !== null && ($policy = DddReverse::current()->policyFor($class))) {
+                $resolved[$class] = $policy;
 
-                return $resolved;
+                return $policy;
             }
 
             $classDirname = str_replace('/', '\\', dirname(str_replace('\\', '/', $class)));
@@ -245,9 +268,11 @@ class AutoloadManager
 
     protected function handleFactories()
     {
-        Factory::guessFactoryNamesUsing(static::$factoryResolver = function (string $modelName) {
+        $resolved = &$this->resolvedFactories;
+
+        Factory::guessFactoryNamesUsing(static::$factoryResolver = function (string $modelName) use (&$resolved) {
             if ($factoryName = DomainFactory::resolveFactoryName($modelName)) {
-                static::$resolvedFactories[$modelName] = $factoryName;
+                $resolved[$modelName] = $factoryName;
 
                 return $factoryName;
             }
@@ -264,37 +289,91 @@ class AutoloadManager
 
     protected function handleListeners()
     {
-        $cached = DomainCache::has('domain-listeners')
-            ? DomainCache::get('domain-listeners')
-            : $this->discoverListeners();
+        $discovered = $this->cached('listeners') ?? $this->discoverListeners();
 
-        $classes = $cached['subscribers'] ?? [];
-
-        foreach ($cached['listeners'] ?? [] as $listeners) {
-            foreach ($listeners as $listener) {
-                $class = is_array($listener) ? $listener[0] : $listener;
-                if (is_string($class)) {
-                    $classes[] = Str::before($class, '@');
-                }
+        foreach ($discovered['listeners'] ?? [] as $event => $eventListeners) {
+            foreach ($eventListeners as $listener) {
+                $this->registeredListeners[$event][] = $listener;
             }
         }
 
-        if (DomainCache::has('domain-listeners')
-            && (! $this->cachedClassesExist($classes) || ! $this->cachedListenerMethodsExist($cached))) {
-            $cached = $this->discoverListeners();
+        foreach ($discovered['subscribers'] ?? [] as $subscriber) {
+            $this->registeredSubscribers[$subscriber] = $subscriber;
         }
 
-        // Preserve v3 discovery independently of explicit subscriber mappings.
-        collect($cached['listeners'] ?? [])
-            ->each(fn (array $eventListeners, string $event) => collect($eventListeners)->each(fn ($listener) => static::$registeredListeners[$event][] = $listener
-            )
-            );
-
-        collect($cached['subscribers'] ?? [])
-            ->each(fn (string $subscriber) => static::$registeredSubscribers[$subscriber] = $subscriber
-            );
-
         return $this;
+    }
+
+    private function registerListeners(array $listeners): void
+    {
+        foreach ($listeners as $event => $eventListeners) {
+            foreach ($eventListeners as $listener) {
+                $parts = is_array($listener) ? $listener : [$listener];
+                $identity = array_map(fn ($part) => is_object($part)
+                    ? ['object', spl_object_id($part)]
+                    : ['value', $part], $parts);
+
+                $this->registerOnce('listener:'.serialize([$event, $identity]), fn () => Event::listen($event, $listener));
+            }
+        }
+    }
+
+    private function registerSubscribers(array $subscribers): void
+    {
+        foreach ($subscribers as $subscriber) {
+            $this->registerOnce('subscriber:'.$subscriber, fn () => Event::subscribe($subscriber));
+        }
+    }
+
+    private function registerOnce(string $key, Closure $register): void
+    {
+        $dispatcher = Event::getFacadeRoot();
+        self::$registeredEvents ??= new WeakMap;
+        $registered = self::$registeredEvents[$dispatcher] ??= new ArrayObject;
+
+        if (isset($registered[$key])) {
+            return;
+        }
+
+        $register();
+
+        // Keep only scalar identities: registry entries must not retain the
+        // dispatcher (including through a closure bound to its application).
+        $registered[$key] = true;
+    }
+
+    /**
+     * One family from the discovery cache, or null when the cache is absent,
+     * foreign, stale or names classes that no longer exist (then boot scans in
+     * memory; it never writes to a deployment's cache directory).
+     */
+    private function cached(string $family): ?array
+    {
+        if (! is_file(DomainCache::path('discovery'))) {
+            return null;
+        }
+
+        try {
+            $inventory = $this->discovery($this->families())->readCache();
+        } catch (InvalidDiscoveryCache) {
+            return null;
+        }
+
+        $value = $this->family($family, $inventory, $this->scanPaths($family));
+
+        if ($family !== 'listeners') {
+            return $this->cachedClassesExist($value) ? $value : null;
+        }
+
+        $classes = $value['subscribers'];
+
+        foreach ($value['listeners'] as $listeners) {
+            foreach ($listeners as $listener) {
+                $classes[] = is_array($listener) ? $listener[0] : $listener;
+            }
+        }
+
+        return $this->cachedClassesExist($classes) && $this->cachedListenerMethodsExist($value) ? $value : null;
     }
 
     private function cachedListenerMethodsExist(array $manifest): bool
@@ -330,8 +409,7 @@ class AutoloadManager
 
     /**
      * A removed class invalidates its whole inventory so renamed replacements
-     * are discovered too. Recovery is in memory: boot must not write to a
-     * deployment's cache directory. Autoload errors deliberately propagate.
+     * are discovered too. Autoload errors deliberately propagate.
      */
     private function cachedClassesExist(array $classes): bool
     {
@@ -380,96 +458,283 @@ class AutoloadManager
 
     public function discoverProviders(): array
     {
-        $configValue = config('ddd.autoload.providers');
-
-        if ($configValue === false) {
-            return [];
-        }
-
-        $paths = $this->normalizePaths(
-            $configValue === true
-                ? $this->getAllLayerPaths()
-                : $configValue
-        );
-
-        if (empty($paths)) {
-            return [];
-        }
-
-        return (new DomainDiscovery)->providers($this->finder($paths));
+        return $this->discover('providers');
     }
 
     public function discoverCommands(): array
     {
-        $configValue = config('ddd.autoload.commands');
-
-        if ($configValue === false) {
-            return [];
-        }
-
-        $paths = $this->normalizePaths(
-            $configValue === true
-                ? $this->getAllLayerPaths()
-                : $configValue
-        );
-
-        if (empty($paths)) {
-            return [];
-        }
-
-        return (new DomainDiscovery)->commands($this->finder($paths));
+        return $this->discover('commands');
     }
 
     public function discoverListeners(): array
     {
-        $configValue = config('ddd.autoload.listeners');
+        return $this->discover('listeners');
+    }
 
-        if ($configValue === false) {
-            return ['listeners' => [], 'subscribers' => []];
+    /**
+     * A cold scan of one family: the files admitted by finder() (called once,
+     * with v3's paths) are the candidates; mod owns class identity and
+     * eligibility; the result is ordered by v3 scan path, then file path.
+     */
+    private function discover(string $family): array
+    {
+        $paths = $this->scanPaths($family);
+
+        if ($paths === []) {
+            return $family === 'listeners' ? ['listeners' => [], 'subscribers' => []] : [];
         }
 
-        $paths = $this->normalizePaths(
-            $configValue === true
-                ? $this->getAllLayerPaths()
-                : $configValue
-        );
+        $inventory = $this->discovery([$family], [$family => $this->admitted($paths)])->scan();
 
-        if (empty($paths)) {
-            return ['listeners' => [], 'subscribers' => []];
+        return $this->family($family, $inventory, $paths);
+    }
+
+    /**
+     * The directories a family scans, exactly as v3: every layer path when the
+     * config value is true, the configured paths otherwise, existing ones only.
+     *
+     * @return array<array-key, string>
+     */
+    private function scanPaths(string $family): array
+    {
+        $configValue = config('ddd.autoload.'.$family);
+
+        if ($configValue === false || $configValue === null) {
+            return [];
         }
 
-        return (new DomainDiscovery)->listeners($paths, $this->app->basePath(), $this->finder($paths));
+        return $this->normalizePaths($configValue === true ? $this->getAllLayerPaths() : $configValue);
+    }
+
+    /**
+     * The base-relative paths of the files finder() admits (one finder() call).
+     *
+     * @return list<string>
+     */
+    private function admitted(array $paths): array
+    {
+        $base = rtrim(Path::normalize($this->app->basePath()), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $files = [];
+
+        foreach ($this->finder($paths) as $file) {
+            $pathname = Path::normalize($file->getPathname());
+
+            if (str_starts_with($pathname, $base)) {
+                $files[] = str_replace(DIRECTORY_SEPARATOR, '/', substr($pathname, strlen($base)));
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Families discovery covers right now (cache identity).
+     *
+     * @return list<string>
+     */
+    private function families(): array
+    {
+        return array_values(array_filter(array_keys(self::FAMILIES), fn (string $family) => $this->enabled($family)));
+    }
+
+    /**
+     * A mod discovery over the compiled ddd layout (plus discovery-only roots
+     * for manual paths), for the given families. $admitted holds, per family,
+     * the candidate files; a family without them gets them from finder() when
+     * mod asks (a cache write).
+     *
+     * @param  list<string>  $families
+     * @param  array<string, list<string>>  $admitted
+     */
+    private function discovery(array $families, array $admitted = [])
+    {
+        $layout = DddLayout::current();
+        $manual = [];
+
+        foreach ($families as $family) {
+            $value = config('ddd.autoload.'.$family);
+
+            if (is_array($value)) {
+                array_push($manual, ...array_values($this->normalizePaths($value)));
+            }
+        }
+
+        $compiled = $layout->withDiscoveryPaths($this->outsideLayoutRoots($layout, array_values(array_unique($manual))));
+        $kinds = [];
+        $types = [];
+
+        foreach ($families as $family) {
+            [$type, $discoveryType] = self::FAMILIES[$family];
+
+            foreach ($layout->kindIds($type) as $kindId) {
+                if ($compiled->hasFileType($kindId)) {
+                    $kinds[$kindId] = $discoveryType;
+                    $types[$discoveryType] = $family;
+                }
+            }
+        }
+
+        // Only the kinds asked for: every other kind of the layout is switched off.
+        foreach (array_keys($compiled->fileTypes()) as $kindId) {
+            $kinds[$kindId] ??= false;
+        }
+
+        $candidates = function (CompiledRoot $root, string $basePath, DiscoveryDefinition $definition) use (&$admitted, $types): array {
+            $family = $types[$definition->type->value] ?? null;
+
+            if ($family === null) {
+                return [];
+            }
+
+            $admitted[$family] ??= $this->admitted($this->scanPaths($family));
+            $prefix = $root->path === '' ? '' : $root->path.'/';
+
+            return array_values(array_filter($admitted[$family], fn (string $file) => $prefix === '' || str_starts_with($file, $prefix)));
+        };
+
+        $options = DiscoveryOptions::fromConfig([
+            'file_types' => $kinds,
+            'cache' => DomainCache::path('discovery'),
+            'on_stale_cache' => 'scan',
+        ])->withCandidates($candidates);
+
+        return new Discovery(layout: $compiled, options: $options, basePath: $this->app->basePath());
+    }
+
+    /**
+     * Manual paths that no root of the ddd layout already covers: a path inside
+     * the domain, application or a layer root is discovered through that root.
+     *
+     * @param  list<string>  $paths  absolute directories
+     * @return list<string>
+     */
+    private function outsideLayoutRoots(DddLayout $layout, array $paths): array
+    {
+        $base = rtrim(Path::normalize($this->app->basePath()), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $roots = array_map(fn (CompiledRoot $root) => $base.Path::normalize($root->path), $layout->compiled()->roots());
+
+        return array_values(array_filter($paths, function (string $path) use ($roots) {
+            $path = rtrim(Path::normalize($path), DIRECTORY_SEPARATOR);
+
+            foreach ($roots as $root) {
+                if ($path === $root || str_starts_with($path, $root.DIRECTORY_SEPARATOR)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+    }
+
+    /**
+     * One family out of an inventory, in v3's shape and order: grouped by the
+     * scan paths in their configured order (a path listed twice yields its
+     * classes twice, as v3's Finder did), sorted by file path within a path.
+     */
+    private function family(string $family, object $inventory, array $paths): array
+    {
+        $type = self::FAMILIES[$family][1];
+        $base = rtrim(Path::normalize($this->app->basePath()), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $entries = array_values($inventory->ofType(DiscoveryType::from($type)));
+        usort($entries, fn (object $a, object $b) => strcmp($a->path, $b->path));
+        $ordered = [];
+
+        foreach ($paths as $path) {
+            $prefix = rtrim(Path::normalize($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+
+            foreach ($entries as $entry) {
+                if (str_starts_with($base.Path::normalize($entry->path), $prefix)) {
+                    $ordered[] = $entry;
+                }
+            }
+        }
+
+        if ($family !== 'listeners') {
+            return array_values(array_map(fn (object $entry) => $entry->class, $ordered));
+        }
+
+        return $this->listenerManifest($ordered);
+    }
+
+    /**
+     * Listeners as v3 reported them: event => ['Class' (handle/__invoke) |
+     * [Class, method]], each once per event; subscribers are the discovered
+     * listener classes with a public subscribe() taking exactly one argument.
+     *
+     * @param  list<object>  $entries  discovered listener classes (class, path, events)
+     */
+    private function listenerManifest(array $entries): array
+    {
+        $listeners = [];
+
+        foreach ($entries as $entry) {
+            foreach ($entry->events as $binding) {
+                $resolved = in_array($binding['method'], ['handle', '__invoke'], true)
+                    ? $entry->class
+                    : [$entry->class, $binding['method']];
+
+                if (! in_array($resolved, $listeners[$binding['event']] ?? [], true)) {
+                    $listeners[$binding['event']][] = $resolved;
+                }
+            }
+        }
+
+        $candidates = [];
+
+        foreach ($listeners as $eventListeners) {
+            foreach ($eventListeners as $listener) {
+                $candidates[is_array($listener) ? $listener[0] : $listener] = true;
+            }
+        }
+
+        $subscribers = array_values(array_filter(array_keys($candidates), function (string $class) {
+            try {
+                $method = (new ReflectionClass($class))->getMethod('subscribe');
+
+                return $method->isPublic() && $method->getNumberOfParameters() === 1;
+            } catch (Throwable) {
+                return false;
+            }
+        }));
+
+        return ['listeners' => $listeners, 'subscribers' => $subscribers];
+    }
+
+    /**
+     * Write the discovery cache (one file for every enabled family) from a cold scan.
+     */
+    public function cacheDiscovery()
+    {
+        $discovery = $this->discovery($this->families());
+
+        $discovery->cacheInventory();
+
+        return $this;
     }
 
     public function cacheCommands()
     {
-        DomainCache::set('domain-commands', $this->discoverCommands());
-
-        return $this;
+        return $this->cacheDiscovery();
     }
 
     public function cacheProviders()
     {
-        DomainCache::set('domain-providers', $this->discoverProviders());
-
-        return $this;
+        return $this->cacheDiscovery();
     }
 
     public function cacheListeners()
     {
-        DomainCache::set('domain-listeners', $this->discoverListeners());
-
-        return $this;
+        return $this->cacheDiscovery();
     }
 
     public function getRegisteredListeners(): array
     {
-        return static::$registeredListeners;
+        return $this->registeredListeners;
     }
 
     public function getRegisteredSubscribers(): array
     {
-        return static::$registeredSubscribers;
+        return $this->registeredSubscribers;
     }
 
     protected function resolveAppNamespace()

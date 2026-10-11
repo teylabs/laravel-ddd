@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Artisan;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Tests\BootsTestApplication;
+use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 uses(BootsTestApplication::class);
 
@@ -68,7 +69,7 @@ describe('when ddd.autoload.providers = true', function () {
         $mock = AutoloadManager::partialMock();
         $mock->run();
 
-        expect(DomainCache::has('domain-providers'))->toBeFalse();
+        expect(is_file(DomainCache::path('discovery')))->toBeFalse();
 
         $expected = array_values($this->providers);
         $registered = array_values($mock->getRegisteredProviders());
@@ -83,21 +84,21 @@ describe('when ddd.autoload.providers = true', function () {
 
 describe('caching', function () {
     it('remembers the last cached state', function () {
-        DomainCache::set('domain-providers', []);
-
         config()->set('ddd.autoload.providers', true);
+
+        DiscoveryCacheFixture::write(['providers' => []]);
 
         $mock = AutoloadManager::partialMock();
         $mock->run();
 
-        expect(DomainCache::has('domain-providers'))->toBeTrue();
+        expect(is_file(DomainCache::path('discovery')))->toBeTrue();
 
         $registered = array_values($mock->getRegisteredProviders());
         expect($registered)->toHaveCount(0);
     });
 
     it('can bust the cache', function () {
-        DomainCache::set('domain-providers', []);
+        DiscoveryCacheFixture::write(['providers' => []]);
         DomainCache::clear();
 
         config()->set('ddd.autoload.providers', true);

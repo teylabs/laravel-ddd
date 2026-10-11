@@ -8,11 +8,9 @@ class DomainCache
 {
     public static function set($key, $value)
     {
-        $cacheDirectory = static::directory();
+        $cacheFilePath = static::path($key);
 
-        File::ensureDirectoryExists(base_path($cacheDirectory));
-
-        $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
+        File::ensureDirectoryExists(dirname($cacheFilePath));
 
         file_put_contents(
             $cacheFilePath,
@@ -24,18 +22,14 @@ class DomainCache
 
     public static function get($key)
     {
-        $cacheDirectory = static::directory();
-
-        $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
+        $cacheFilePath = static::path($key);
 
         return file_exists($cacheFilePath) ? include $cacheFilePath : null;
     }
 
     public static function has($key)
     {
-        $cacheDirectory = static::directory();
-
-        $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
+        $cacheFilePath = static::path($key);
 
         return file_exists($cacheFilePath);
     }
@@ -49,9 +43,7 @@ class DomainCache
 
     public static function forget($key)
     {
-        $cacheDirectory = static::directory();
-
-        $cacheFilePath = base_path("{$cacheDirectory}/ddd-{$key}.php");
+        $cacheFilePath = static::path($key);
 
         File::delete($cacheFilePath);
     }
@@ -61,6 +53,14 @@ class DomainCache
         $files = glob(base_path(static::directory().'/ddd-*.php'));
 
         File::delete($files);
+    }
+
+    /**
+     * The absolute path of one cache file (ddd-{$key}.php).
+     */
+    public static function path(string $key): string
+    {
+        return base_path(static::directory()."/ddd-{$key}.php");
     }
 
     /**

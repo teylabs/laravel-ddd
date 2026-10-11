@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Gate;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainCache;
-use Tey\LaravelDDD\Support\DomainDiscovery;
 use Tey\LaravelDDD\Tests\BootsTestApplication;
 
 // Framework compatibility contract for runtime discovery (audit F19 #4).
@@ -41,44 +40,31 @@ afterEach(function () {
     Artisan::call('ddd:clear');
 });
 
-it('restores a pre-existing event discovery callback', function () {
-    $sentinel = fn (SplFileInfo $file, string $basePath) => 'Sentinel\\Placeholder';
+it('never borrows the event discovery callback', function () {
+    $calls = 0;
+    $sentinel = function (SplFileInfo $file, string $basePath) use (&$calls) {
+        $calls++;
+
+        return 'Sentinel\\Placeholder';
+    };
 
     DiscoverEvents::guessClassNamesUsing($sentinel);
+    config()->set('ddd.autoload.listeners', true);
 
-    (new DomainDiscovery)->listeners(
-        [base_path('src/Domain/Invoicing/Listeners')],
-        base_path(),
-    );
+    $discovered = (new AutoloadManager)->discoverListeners();
 
-    expect(DiscoverEvents::$guessClassNamesUsingCallback)->toBe(
-        $sentinel,
-        'Domain discovery must hand back the class-name callback it borrowed',
-    );
-});
-
-it('restores the event discovery callback even when the scan fails', function () {
-    $sentinel = fn (SplFileInfo $file, string $basePath) => 'Sentinel\\Placeholder';
-
-    DiscoverEvents::guessClassNamesUsing($sentinel);
-
-    // A path that does not exist: the scan is rescued internally, but the
-    // borrowed global state still has to be returned.
-    (new DomainDiscovery)->listeners(
-        [base_path('src/Domain/DoesNotExist/Listeners')],
-        base_path(),
-    );
-
-    expect(DiscoverEvents::$guessClassNamesUsingCallback)->toBe($sentinel);
+    // v4 resolves listener classes through mod (the compiled ddd layout), so the
+    // framework's process-global class-name callback is neither replaced nor used.
+    expect(DiscoverEvents::$guessClassNamesUsingCallback)->toBe($sentinel)
+        ->and($calls)->toBe(0)
+        ->and($discovered)->toHaveKeys(['listeners', 'subscribers']);
 });
 
 it('leaves no event discovery callback behind when none was set', function () {
     DiscoverEvents::$guessClassNamesUsingCallback = null;
+    config()->set('ddd.autoload.listeners', true);
 
-    (new DomainDiscovery)->listeners(
-        [base_path('src/Domain/Invoicing/Listeners')],
-        base_path(),
-    );
+    (new AutoloadManager)->discoverListeners();
 
     expect(DiscoverEvents::$guessClassNamesUsingCallback)->toBeNull();
 });

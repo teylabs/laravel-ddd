@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Event;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Tests\BootsTestApplication;
+use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 uses(BootsTestApplication::class);
 
@@ -100,21 +101,21 @@ describe('when ddd.autoload.listeners = true', function () {
 
 describe('caching', function () {
     it('remembers the last cached state', function () {
-        DomainCache::set('domain-listeners', ['listeners' => [], 'subscribers' => []]);
-
         config()->set('ddd.autoload.listeners', true);
+
+        DiscoveryCacheFixture::write(['listeners' => ['listeners' => [], 'subscribers' => []]]);
 
         $mock = AutoloadManager::partialMock();
         $mock->run();
 
-        expect(DomainCache::has('domain-listeners'))->toBeTrue();
+        expect(is_file(DomainCache::path('discovery')))->toBeTrue();
 
         $listeners = $mock->getRegisteredListeners();
         expect($listeners)->toHaveCount(0);
     });
 
     it('can bust the cache', function () {
-        DomainCache::set('domain-listeners', ['listeners' => [], 'subscribers' => []]);
+        DiscoveryCacheFixture::write(['listeners' => ['listeners' => [], 'subscribers' => []]]);
         DomainCache::clear();
 
         config()->set('ddd.autoload.listeners', true);

@@ -24,9 +24,7 @@ class OptimizeCommand extends Command
     public function handle()
     {
         $this->components->info('Caching DDD providers, commands, listeners, migration paths.');
-        $this->components->task('domain providers', fn () => Autoload::cacheProviders());
-        $this->components->task('domain commands', fn () => Autoload::cacheCommands());
-        $this->components->task('domain listeners', fn () => Autoload::cacheListeners());
+        $this->components->task('domain discovery', fn () => Autoload::cacheDiscovery());
         $this->components->task('domain migration paths', fn () => DomainMigration::cachePaths());
         $this->newLine();
 

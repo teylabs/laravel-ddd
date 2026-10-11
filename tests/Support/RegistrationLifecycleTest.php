@@ -138,8 +138,13 @@ it('registers one artisan callback per manager and reads the live command invent
     $other->commands = [LifecycleSecondCommand::class];
     $other->run();
 
+    // Each manager keeps its own inventory (no static state); Artisan resolves the
+    // most recently booted manager's commands for the application.
     expect(LifecycleConsole::bootstrapperCount())->toBe($before + 2)
         ->and($this->manager->getRegisteredCommands())->toBe([
+            LifecycleFirstCommand::class => LifecycleFirstCommand::class,
+        ])
+        ->and($other->getRegisteredCommands())->toBe([
             LifecycleSecondCommand::class => LifecycleSecondCommand::class,
         ]);
 
