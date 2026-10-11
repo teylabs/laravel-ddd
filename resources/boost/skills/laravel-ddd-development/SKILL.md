@@ -1,6 +1,6 @@
 ---
 name: laravel-ddd-development
-description: "Generate and organize objects using tey/laravel-ddd, including ddd:* Artisan commands, configured domain and application layers, custom stubs, and discovery. Use when working with this package or config/ddd.php; not for general DDD architecture discussions in applications without the package."
+description: "Generate and organise objects using tey/laravel-ddd, including ddd:* Artisan commands, configured domain and application layers, custom stubs, and discovery. Use when working with this package or config/ddd.php; not for general DDD architecture discussions in applications without the package."
 license: MIT
 metadata:
   author: Jasper Tey / Tey Labs
@@ -24,7 +24,7 @@ Do not relocate existing code or rewrite these settings merely to match an examp
 
 ## Generate objects
 
-Use an explicit domain to avoid domain-selection prompts. Check `php artisan help ddd:controller` (or the relevant command) for options in the installed version. Most generators wrap Laravel commands, whose available options vary by framework version.
+Use an explicit domain to avoid domain-selection prompts. Check `php artisan help ddd:controller` (or the relevant command) for options in the installed version. Version 4.0 builds on tey/mod adapters while preserving the configured DDD layout. Use `--dry-run` to preview generation and `--dry-run --json` for a machine-readable plan; migration previews with native paths or custom creators are refused before writing. Most generators wrap Laravel commands, whose available options vary by framework version.
 
 ```bash
 php artisan ddd:model Invoicing:Invoice
@@ -51,6 +51,8 @@ Inspect published stubs before assuming framework defaults. Stub precedence is `
 
 Existing generator types can be configured; do not invent commands such as `ddd:repository` or assume a preset API exists. Check the registered Artisan commands before selecting a generator.
 
+For custom generators or other layouts, tey/mod is the upgrade path. `php artisan ddd:upgrade --to=mod` previews the configuration, class and stub changes; `--force` applies them, and `--force --composer` also replaces the dependency. Inspect the complete plan and blockers before applying it. Custom autoload paths and path-filter callbacks can block migration. Once moved, use the installed `mod-development` skill and `mod:*` commands.
+
 ## Discovery and caches
 
 Providers and console commands are discovered across configured domain, application, and custom layers. Listener discovery is opt-in. Use public typed `handle*` or `__invoke` methods for Laravel event discovery. Subscriber candidates must first be discoverable; a `subscribe()` method alone does not guarantee discovery.
@@ -59,6 +61,6 @@ Policy and factory naming use resolver callbacks, not the same class-scanning me
 
 Set individual `ddd.autoload` switches to `false` to disable them. Deleting the block can restore package defaults. `autoload_ignore` filters class scanning, not migration paths or policy/factory naming callbacks. A custom `DDD::filterAutoloadPathsUsing()` callback replaces the default ignore filter; preserve needed exclusions.
 
-After intentional configuration or discovery changes, rebuild affected application caches through the project's deployment workflow. `ddd:optimize` and `ddd:clear` manage package manifests and integrate with Laravel's `optimize` / `optimize:clear`. Do not run broad cache-clearing commands against an unrelated environment just to generate a file.
+After intentional configuration or discovery changes, rebuild affected application caches through the project's deployment workflow. In 4.0, discovery uses tey/mod, registers candidates in sorted file-path order within each path, and uses `ddd-discovery.php` and `ddd-migration-paths.php`. Boot remains read-only; stale categories fall back to in-memory discovery. Rebuild 3.x manifests after upgrading. `ddd:optimize` and `ddd:clear` manage package manifests and integrate with Laravel's `optimize` / `optimize:clear`. Do not run broad cache-clearing commands against an unrelated environment just to generate a file.
 
 For exact behaviour, use the installed package source and README rather than assuming the latest upstream documentation matches the installed release. Application instructions and the user's chosen scope take precedence over these examples.

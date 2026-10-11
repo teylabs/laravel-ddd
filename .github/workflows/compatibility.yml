@@ -73,7 +73,7 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.4']
-        laravel: ['13.*', '12.*', '11.*']
+        laravel: ['13.*', '12.*']
         include:
           - laravel: '13.*'
             testbench: '11.*'
@@ -81,16 +81,10 @@ jobs:
           - laravel: '12.*'
             testbench: '10.*'
             key: 'released-l12'
-          - laravel: '11.*'
-            testbench: '^9.11'
-            key: 'released-l11'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          # The full suite compares against a pinned historical package commit.
-          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -160,7 +154,7 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.3']
-        laravel: ['13.*', '12.*', '11.*']
+        laravel: ['13.*', '12.*']
         include:
           - laravel: '13.*'
             testbench: '11.*'
@@ -170,17 +164,10 @@ jobs:
             testbench: '10.*'
             declared-floor: '12.0.0'
             key: 'lowest-l12'
-          - laravel: '11.*'
-            testbench: '^9.11'
-            declared-floor: '11.44.0'
-            key: 'lowest-l11'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          # The full suite compares against a pinned historical package commit.
-          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -239,7 +226,7 @@ jobs:
     # picture.
     #
     # The version is pinned to an EXACT release, not a patch wildcard. A range
-    # like 11.44.* can resolve a later patch, and with minimum-stability:dev it
+    # like 12.0.* can resolve a later patch, and with minimum-stability:dev it
     # can resolve a branch alias — either of which would let this job report
     # success under the declared floor's name. The smoke script re-checks the
     # installed version before it does anything.
@@ -250,9 +237,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - floor: '11.44.0'
-            php: '8.3'
-            key: 'floor-11-44-0'
           - floor: '12.0.0'
             php: '8.3'
             key: 'floor-12-0-0'
@@ -352,9 +336,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          # The full suite compares against a pinned historical package commit.
-          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2

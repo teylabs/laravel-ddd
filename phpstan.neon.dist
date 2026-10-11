@@ -3,7 +3,7 @@ includes:
 
 parameters:
     level: 4
-    # The package targets Laravel 11/12/13, whose Command::handle() PHPDoc return
+    # The package targets Laravel 12/13, whose Command::handle() PHPDoc return
     # types differ. Treating those PHPDoc types as certain flags the defensive
     # return-shape checks in HandleHooks as impossible, which they aren't at runtime.
     treatPhpDocTypesAsCertain: false

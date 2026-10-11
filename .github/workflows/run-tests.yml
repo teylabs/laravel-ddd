@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         php: [8.4, 8.3]
-        laravel: [13.*, 12.*, 11.*]
+        laravel: [13.*, 12.*]
         stability: [prefer-lowest, prefer-stable]
         include:
             -   laravel: 13.*
@@ -30,21 +30,12 @@ jobs:
                 carbon: "^3.8.4"
                 pest: "^4.0"
                 pest-plugin: "^4.0"
-            -   laravel: 11.*
-                testbench: "^9.11"
-                carbon: "^3.8.4"
-                pest: "^4.0"
-                pest-plugin: "^4.0"
 
     name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.stability }} - ${{ matrix.os }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          # The bounded consumer comparison loads an immutable pre-extraction
-          # package commit; missing history must fail, never silently skip it.
-          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
