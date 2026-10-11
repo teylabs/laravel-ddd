@@ -3,7 +3,7 @@ name: laravel-ddd-development
 description: "Generate and organize objects using tey/laravel-ddd, including ddd:* Artisan commands, configured domain and application layers, custom stubs, and discovery. Use when working with this package or config/ddd.php; not for general DDD architecture discussions in applications without the package."
 license: MIT
 metadata:
-  author: Jasper Tey / Teylabs
+  author: Jasper Tey / Tey Labs
 ---
 
 # Laravel-DDD development
