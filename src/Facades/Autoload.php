@@ -17,6 +17,7 @@ use Tey\LaravelDDD\Support\AutoloadManager;
  * @method static array getRegisteredListeners()
  * @method static array getRegisteredSubscribers()
  * @method static AutoloadManager cacheCommands()
+ * @method static AutoloadManager cacheDiscovery()
  * @method static AutoloadManager cacheProviders()
  * @method static AutoloadManager cacheListeners()
  */

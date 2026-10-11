@@ -4,6 +4,7 @@ namespace Tey\LaravelDDD\Support;
 
 use Illuminate\Support\Str;
 use Tey\LaravelDDD\Enums\LayerType;
+use Tey\LaravelDDD\Support\Layout\DddReverse;
 
 class DomainResolver
 {
@@ -126,18 +127,7 @@ class DomainResolver
     public static function getDomainObjectNamespace(string $domain, string $type, ?string $name = null): string
     {
         $resolver = function (string $domain, string $type, ?string $name) {
-            $layer = static::resolveLayer($domain, $type);
-
-            $namespace = collect([
-                $layer->namespace,
-                static::getRelativeObjectNamespace($type),
-            ])->filter()->implode('\\');
-
-            if ($name) {
-                $namespace .= '\\'.Path::normalizeNamespace(trim($name, '\\/'));
-            }
-
-            return $namespace;
+            return static::resolveLayer($domain, $type)->namespaceFor($type, $name === null ? null : trim($name, '\\/'));
         };
 
         return $resolver($domain, $type, $name);
@@ -148,17 +138,9 @@ class DomainResolver
      */
     public static function guessDomainFromClass(string $class): ?string
     {
-        if (! static::isDomainClass($class)) {
-            // Not a domain object
-            return null;
-        }
+        $object = DddReverse::current()->objectFromClass($class);
 
-        $domain = str($class)
-            ->after(Str::finish(static::domainRootNamespace(), '\\'))
-            ->before('\\')
-            ->toString();
-
-        return $domain;
+        return $object === null ? null : Str::before($object->domain, '\\');
     }
 
     /**
@@ -166,16 +148,7 @@ class DomainResolver
      */
     public static function guessPathFromClass(string $class): ?string
     {
-        if (! static::isDomainClass($class)) {
-            // Not a domain object
-            return null;
-        }
-
-        $classWithoutDomainRoot = str($class)
-            ->after(Str::finish(static::domainRootNamespace(), '\\'))
-            ->toString();
-
-        return Path::join(...[static::domainPath(), "{$classWithoutDomainRoot}.php"]);
+        return DddReverse::current()->objectFromClass($class)?->path;
     }
 
     /**
@@ -201,6 +174,6 @@ class DomainResolver
      */
     public static function isDomainClass(string $class): bool
     {
-        return str($class)->startsWith(Str::finish(static::domainRootNamespace(), '\\'));
+        return DddReverse::current()->objectFromClass($class) !== null;
     }
 }

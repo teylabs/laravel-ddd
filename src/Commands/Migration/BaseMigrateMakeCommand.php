@@ -2,13 +2,27 @@
 
 namespace Tey\LaravelDDD\Commands\Migration;
 
-use Illuminate\Database\Console\Migrations\MigrateMakeCommand;
+use Illuminate\Database\Migrations\MigrationCreator;
+use Illuminate\Support\Composer;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
+use Tey\Mod\Commands\MigrationCommand;
 
-class BaseMigrateMakeCommand extends MigrateMakeCommand
+class BaseMigrateMakeCommand extends MigrationCommand
 {
     protected $signature = null;
+
+    /**
+     * Whether the application bound its own migration creator subclass.
+     */
+    protected bool $usesApplicationCreator = false;
+
+    /** Accept the application's creator; Mod owns native clock adaptation. */
+    public function __construct(MigrationCreator $creator, Composer $composer)
+    {
+        $this->usesApplicationCreator = get_class($creator) !== MigrationCreator::class;
+        parent::__construct($creator, $composer);
+    }
 
     protected function getArguments()
     {

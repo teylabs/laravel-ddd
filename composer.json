@@ -18,26 +18,27 @@
         }
     ],
     "require": {
-        "php": "^8.3|^8.4",
-        "illuminate/contracts": "^11.44|^12.0|^13.0",
+        "php": "^8.3",
+        "illuminate/contracts": "^12.0|^13.0",
         "laravel/pint": "^1.21",
         "laravel/prompts": "^0.3.1",
-        "lorisleiva/lody": "^0.6|^0.7",
         "spatie/laravel-package-tools": "^1.19.0",
         "symfony/finder": "^7.0|^8.0",
-        "symfony/var-exporter": "^7.1|^8.0"
+        "symfony/var-exporter": "^7.1|^8.0",
+        "tey/mod": "^0.5"
     },
     "require-dev": {
-        "larastan/larastan": "^2.0.1|^3.0",
+        "larastan/larastan": "^3.0",
         "nunomaduro/collision": "^8.0",
-        "orchestra/testbench": "^9.11|^10.0|^11.0",
+        "orchestra/testbench": "^10.0|^11.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0",
         "phpstan/extension-installer": "^1.1",
         "phpstan/phpstan-deprecation-rules": "^2.0",
         "phpstan/phpstan-phpunit": "^2.0",
         "spatie/laravel-data": "^4.11.1",
-        "lorisleiva/laravel-actions": "^2.9.0"
+        "lorisleiva/laravel-actions": "^2.9.0",
+        "lorisleiva/lody": "^0.6|^0.7"
     },
     "suggest": {
         "spatie/laravel-data": "Recommended for Data Transfer Objects.",
@@ -83,7 +84,10 @@
             ],
             "aliases": {
                 "DDD": "Tey\\LaravelDDD\\Facades\\DDD"
-            }
+            },
+            "dont-discover": [
+                "tey/mod"
+            ]
         }
     },
     "minimum-stability": "dev",

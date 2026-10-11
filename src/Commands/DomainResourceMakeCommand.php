@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ResourceMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ResourceCommand;
 
-class DomainResourceMakeCommand extends ResourceMakeCommand
+class DomainResourceMakeCommand extends ResourceCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\CastMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\CastCommand;
 
-class DomainCastMakeCommand extends CastMakeCommand
+class DomainCastMakeCommand extends CastCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

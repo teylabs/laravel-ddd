@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ExceptionMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ExceptionCommand;
 
-class DomainExceptionMakeCommand extends ExceptionMakeCommand
+class DomainExceptionMakeCommand extends ExceptionCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

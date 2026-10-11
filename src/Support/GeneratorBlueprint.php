@@ -6,8 +6,11 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\App;
 use Tey\LaravelDDD\Enums\LayerType;
 use Tey\LaravelDDD\Exceptions\EmptyRootNamespace;
+use Tey\LaravelDDD\Support\Layout\DddLayout;
+use Tey\LaravelDDD\Support\Layout\DddPlacement;
 use Tey\LaravelDDD\ValueObjects\CommandContext;
 use Tey\LaravelDDD\ValueObjects\ObjectSchema;
+use Tey\Mod\Artifact\ResolvedArtifact;
 
 class GeneratorBlueprint
 {
@@ -30,6 +33,9 @@ class GeneratorBlueprint
     public bool $isAbsoluteName;
 
     public string $type;
+
+    /** The conventional placement (mod), or the schema callback's identity when one answered. */
+    protected ?ResolvedArtifact $artifact = null;
 
     public function __construct(
         string $commandName,
@@ -91,13 +97,21 @@ class GeneratorBlueprint
 
     protected function guessObjectType(): string
     {
-        return match ($this->command->name) {
+        return static::objectTypeFor($this->command->name);
+    }
+
+    /**
+     * The object type a ddd:* command generates ('ddd:dto' → data_transfer_object).
+     */
+    public static function objectTypeFor(string $commandName): string
+    {
+        return match ($commandName) {
             'ddd:base-view-model' => 'view_model',
             'ddd:base-model' => 'model',
             'ddd:value' => 'value_object',
             'ddd:dto' => 'data_transfer_object',
             'ddd:migration' => 'migration',
-            default => str($this->command->name)->after(':')->snake()->toString(),
+            default => str($commandName)->after(':')->snake()->toString(),
         };
     }
 
@@ -115,28 +129,44 @@ class GeneratorBlueprint
             : null;
 
         if ($blueprint instanceof ObjectSchema) {
+            $this->artifact = DddLayout::current()->artifactFromSchema($blueprint, $this->type, $this->layer);
+
             return $blueprint;
         }
 
-        $this->ensureRootNamespaceIsConfigured();
+        // A "\Name" input is namespace-relative to the layer root. Migrations are files: the
+        // layout gives the directory; the native creator names the file.
+        $relative = ! $this->isAbsoluteName && DddPlacement::isNamespaceRelative($this->nameInput);
+        $name = ($relative ? '\\' : '').($this->type === 'migration' ? str($this->nameInput)->snake()->toString() : $this->normalizedName);
 
-        $namespace = $this->layer->namespaceForObject($this->type, $this->nameInput, $this->isAbsoluteName);
+        $this->artifact = DddPlacement::current()->resolve($this->type, $this->domain, $name, $this->isAbsoluteName, $this->layer);
 
-        // A namespace-relative name ("\Custom\Invoice") already carries its folders in $namespace.
-        $name = ! $this->isAbsoluteName && str_starts_with($this->nameInput, '\\')
-            ? $this->baseName
-            : $this->normalizedName;
+        if ($this->artifact->namespace() === null) {
+            $namespace = $this->layer->namespaceFor($this->type);
 
-        $fullyQualifiedName = str($name)
-            ->start($namespace.'\\')
-            ->toString();
+            return new ObjectSchema(
+                name: $this->normalizedName,
+                namespace: $namespace,
+                fullyQualifiedName: $namespace.'\\'.$this->normalizedName,
+                path: Path::join(dirname($this->artifact->path()), $this->normalizedName.'.php'),
+            );
+        }
 
         return new ObjectSchema(
-            name: $name,
-            namespace: $namespace,
-            fullyQualifiedName: $fullyQualifiedName,
-            path: $this->layer->path($fullyQualifiedName),
+            name: $this->normalizedName,
+            namespace: DddPlacement::namespaceOf($this->artifact, $relative),
+            fullyQualifiedName: (string) $this->artifact->fqcn(),
+            path: Path::normalize($this->artifact->path()),
         );
+    }
+
+    /**
+     * The resolved artifact this blueprint generates: mod's conventional
+     * placement, or the schema callback's identity verbatim.
+     */
+    public function artifact(): ResolvedArtifact
+    {
+        return $this->artifact ??= DddLayout::current()->artifactFromSchema($this->schema, $this->type, $this->layer);
     }
 
     public function rootNamespace()

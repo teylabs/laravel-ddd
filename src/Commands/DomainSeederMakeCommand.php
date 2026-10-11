@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Database\Console\Seeds\SeederMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\SeederCommand;
 
-class DomainSeederMakeCommand extends SeederMakeCommand
+class DomainSeederMakeCommand extends SeederCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

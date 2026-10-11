@@ -285,3 +285,23 @@ it('leaves a model-forwarded controller referencing only classes that exist', fu
 
     expect(importsOf($controllerPath))->toContain('Illuminate\Http\Request');
 });
+
+it('generates custom-layer requests for an application-layer controller', function () {
+    Config::set([
+        'ddd.layers' => ['CustomLayer' => 'src/CustomLayer'],
+        'ddd.application_objects' => ['controller'],
+    ]);
+
+    File::ensureDirectoryExists(base_path('src/CustomLayer/Models'));
+    File::put(base_path('src/CustomLayer/Models/ProbeModel.php'), "<?php\nnamespace CustomLayer\\Models;\nclass ProbeModel {}\n");
+
+    $this->artisan('ddd:controller', [
+        'name' => 'ProbeController', '--domain' => 'CustomLayer', '--model' => 'ProbeModel',
+        '--requests' => true, '--api' => true,
+    ])->assertSuccessful()->execute();
+
+    expectRequestImportsToMatch('app/Modules/CustomLayer/Controllers/ProbeController.php', [
+        'src/CustomLayer/Requests/StoreProbeModelRequest.php',
+        'src/CustomLayer/Requests/UpdateProbeModelRequest.php',
+    ]);
+});

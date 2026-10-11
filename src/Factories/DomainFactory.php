@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Tey\LaravelDDD\Support\DomainResolver;
-use Tey\LaravelDDD\ValueObjects\DomainObject;
+use Tey\LaravelDDD\Support\Layout\DddReverse;
 
 abstract class DomainFactory extends Factory
 {
@@ -28,24 +28,8 @@ abstract class DomainFactory extends Factory
      */
     public static function resolveFactoryName(string $modelName)
     {
-        $resolver = function (string $modelName) {
-            $model = DomainObject::fromClass($modelName, 'model');
-
-            if (! $model) {
-                // Not a domain model
-                return null;
-            }
-
-            // First try resolving as a factory class in the domain layer
-            $factoryClass = DomainResolver::getDomainObjectNamespace($model->domain, 'factory', "{$model->name}Factory");
-            if (class_exists($factoryClass)) {
-                return $factoryClass;
-            }
-
-            // Otherwise, fallback to the the standard location under /database/factories
-            return static::$namespace."{$model->domain}\\{$model->name}Factory";
-        };
-
-        return $resolver($modelName);
+        // The factory the layout places beside the model when it exists, else the standard
+        // location under /database/factories; null when the class is not a domain model.
+        return DddReverse::current()->factoryFor($modelName, static::$namespace);
     }
 }

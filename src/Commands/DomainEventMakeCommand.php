@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\EventMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\EventCommand;
 
-class DomainEventMakeCommand extends EventMakeCommand
+class DomainEventMakeCommand extends EventCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

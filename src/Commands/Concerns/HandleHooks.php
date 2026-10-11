@@ -2,6 +2,8 @@
 
 namespace Tey\LaravelDDD\Commands\Concerns;
 
+use Tey\Mod\Commands\MigrationCommand;
+
 trait HandleHooks
 {
     protected function beforeHandle()
@@ -16,7 +18,7 @@ trait HandleHooks
 
     /**
      * Retain the legacy handler hooks and generator return-value normalization.
-     * Preparation stays inside Laravel's handler dispatch and isolation gate.
+     * Preparation and planning stay inside Laravel's handler dispatch and isolation gate.
      *
      * @return int|bool|null
      */
@@ -24,8 +26,14 @@ trait HandleHooks
     {
         $this->beforeHandle();
 
-        /** @phpstan-ignore-next-line staticMethod.void */
-        $result = parent::handle();
+        // Built on a mod class adapter: place the class (and the relations its
+        // options follow) once the domain is known, before the native write.
+        // The migration adapter plans in its own execute() and honours --path.
+        if (isset($this->blueprint) && ! $this instanceof MigrationCommand) {
+            $this->resolvePlan();
+        }
+
+        $result = $this->handleNatively();
 
         $this->afterHandle();
 
@@ -44,5 +52,16 @@ trait HandleHooks
 
         // void/null defaults to SUCCESS
         return self::SUCCESS;
+    }
+
+    /**
+     * The parent generator's handler.
+     *
+     * @return int|bool|null
+     */
+    protected function handleNatively()
+    {
+        /** @phpstan-ignore-next-line staticMethod.void */
+        return parent::handle();
     }
 }

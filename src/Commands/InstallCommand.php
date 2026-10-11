@@ -8,6 +8,7 @@ use function Laravel\Prompts\confirm;
 
 class InstallCommand extends Command
 {
+    // --composer is accepted for compatibility but unused: composer.json is always reloaded with the application's Composer.
     public $signature = 'ddd:install {--composer=global : Absolute path to the Composer binary which should be used}';
 
     protected $description = 'Install and initialize Laravel-DDD';
