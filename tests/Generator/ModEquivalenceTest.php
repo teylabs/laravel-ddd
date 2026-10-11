@@ -244,7 +244,7 @@ it('writes the same files as the mod adapter on the ddd layout', function (strin
 
     foreach ($ddd as $path => $contents) {
         // The class name, whatever modifiers the DDD stub declares.
-        foreach (['/^namespace ([^;]+);$/m', '/^(?:final |abstract |readonly )*(?:class|trait|interface|enum) (\w+)/m'] as $declaration) {
+        foreach (['/^namespace ([^;]+);\r?$/m', '/^(?:final |abstract |readonly )*(?:class|trait|interface|enum) (\w+)/m'] as $declaration) {
             preg_match($declaration, $contents, $dddMatch);
             preg_match($declaration, $mod[$path], $modMatch);
 

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\File;
 use Tey\LaravelDDD\Support\DomainResolver;
 use Tey\LaravelDDD\Support\Layout\DddLayout;
 use Tey\LaravelDDD\Support\Upgrade\ModUpgrade;
+use Tey\LaravelDDD\Support\Upgrade\ModUpgradePlan;
 use Tey\Mod\Layout\Layout;
 use Tey\Mod\Placement\PlacementContext;
 
@@ -375,4 +376,36 @@ it('runs no Composer command without --composer', function () {
     $this->artisan('ddd:upgrade', ['--to' => 'mod', '--force' => true])->assertExitCode(0);
 
     expect($ran)->toBe([]);
+});
+
+it('rewrites CRLF class imports and preserves their line endings', function () {
+    $before = "<?php\r\n\r\nnamespace Domain\\Billing\\Models;\r\n\r\nuse Tey\\LaravelDDD\\Models\\DomainModel;\r\n\r\nclass Invoice extends DomainModel\r\n{\r\n}\r\n";
+    $after = ModUpgrade::for($this->app)->rewrite($before);
+
+    expect($after)->toContain("use Illuminate\\Database\\Eloquent\\Model;\r\n")
+        ->toContain("class Invoice extends Model\r\n")
+        ->toContain("    use HasFactory;\r\n")
+        ->toContain("    protected \$guarded = [];\r\n")
+        ->not->toContain('DomainModel')
+        ->and(str_replace("\r\n", '', $after))->not->toContain("\n");
+
+    $diff = ModUpgradePlan::diff($before, $after);
+    expect($diff)->toContain('-use Tey\LaravelDDD\Models\DomainModel;')
+        ->toContain('+use Illuminate\Database\Eloquent\Model;');
+});
+
+it('keeps discovery when upgrade roots use Windows separators', function () {
+    publishDddConfig([
+        'domain_path' => 'src\\Domain',
+        'application_path' => 'app\\Modules',
+        'layers' => ['Infrastructure' => 'src\\Infrastructure'],
+    ]);
+    putAppFile('src/Domain/Billing/Support/UpgradeWindowsProvider.php', "<?php\n\nnamespace Domain\\Billing\\Support;\n\nclass UpgradeWindowsProvider extends \\Illuminate\\Support\\ServiceProvider\n{\n}\n");
+    putAppFile('src/Infrastructure/Providers/UpgradeWindowsLayerProvider.php', "<?php\n\nnamespace Infrastructure\\Providers;\n\nclass UpgradeWindowsLayerProvider extends \\Illuminate\\Support\\ServiceProvider\n{\n}\n");
+
+    $this->artisan('ddd:upgrade', ['--to' => 'mod', '--force' => true])->assertSuccessful()->execute();
+
+    $provider = file_get_contents(app_path('Providers/ModLayoutServiceProvider.php'));
+    expect($provider)->toContain("->generates('provider', discover: 'anywhere'")
+        ->toContain("->mounts('infrastructure', 'Infrastructure\\\\', 'src/Infrastructure')");
 });

@@ -258,7 +258,7 @@ it('maps classes back to domain objects with the v3 shape', function () {
         ->and($model?->domain)->toBe('Invoicing')
         ->and($model?->namespace)->toBe('Models')
         ->and($model?->type)->toBe('model')
-        ->and($model?->path)->toBe('src/Domain/Invoicing/Models/Archived/Invoice.php');
+        ->and($model?->path)->toEqualPath('src/Domain/Invoicing/Models/Archived/Invoice.php');
 
     expect($reverse->objectFromClass('Domain\Invoicing\Billing\Models\Invoice')?->domain)->toBe('Invoicing\Billing')
         ->and($reverse->objectFromClass('Domain\Invoicing\Models\Invoice', 'policy')?->namespace)->toBe('') // v3: typed miss is a root-level object of that type

@@ -3,10 +3,11 @@
 use Tey\LaravelDDD\LaravelDDDServiceProvider;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Support\DomainMigration;
+use Tey\LaravelDDD\Support\Path;
 use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 it('does not register cached migration paths when discovery is disabled', function () {
-    $paths = [base_path('src/Domain/Billing/Database/Migrations')];
+    $paths = [Path::normalize(base_path('src/Domain/Billing/Database/Migrations'))];
 
     $written = DiscoveryCacheFixture::writeMigrationPaths(['src/Domain/Billing/Database/Migrations']);
     config(['ddd.autoload.migrations' => false]);
@@ -20,7 +21,7 @@ it('does not register cached migration paths when discovery is disabled', functi
 });
 
 it('registers cached migration paths when discovery is enabled', function () {
-    $paths = [base_path('src/Domain/Billing/Database/Migrations')];
+    $paths = [Path::normalize(base_path('src/Domain/Billing/Database/Migrations'))];
 
     config(['ddd.autoload.migrations' => true]);
     DiscoveryCacheFixture::writeMigrationPaths(['src/Domain/Billing/Database/Migrations']);

@@ -92,8 +92,8 @@ final class ModUpgradePlan
      */
     public static function diff(?string $before, string $after, int $context = 2): array
     {
-        $old = $before === null ? [] : explode("\n", rtrim($before, "\n"));
-        $new = explode("\n", rtrim($after, "\n"));
+        $old = $before === null ? [] : preg_split("/\r\n|\n|\r/", rtrim($before, "\r\n"));
+        $new = preg_split("/\r\n|\n|\r/", rtrim($after, "\r\n"));
         $n = count($old);
         $m = count($new);
         $lcs = array_fill(0, $n + 1, array_fill(0, $m + 1, 0));

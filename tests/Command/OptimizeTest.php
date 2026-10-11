@@ -60,7 +60,7 @@ it('can optimize discovered domain providers, commands, listeners, migrations', 
 
     $paths = collect(cachedInventory('migration-paths')->directories('domain-migration'))->join("\n");
 
-    expect($paths)->toContainFilepath('src/Domain/Invoicing/Database/Migrations');
+    expect($paths)->toContain('src/Domain/Invoicing/Database/Migrations');
 });
 
 it('ignores and clears v3 cache files', function () {

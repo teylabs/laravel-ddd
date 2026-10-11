@@ -11,7 +11,6 @@ use Symfony\Component\Process\Process;
 use Tey\LaravelDDD\Facades\DDD;
 use Tey\LaravelDDD\Support\DomainResolver;
 use Tey\LaravelDDD\Support\Layout\DddLayout;
-use Tey\LaravelDDD\Support\Path;
 use Tey\Mod\Layout\CompiledLayout;
 use Tey\Mod\Layout\Layout;
 use Tey\Mod\ModServiceProvider;
@@ -160,8 +159,8 @@ final class ModUpgrade
     {
         $base = Layout::fresh(DddLayout::EXTENDS)->compiled();
         $roots = [
-            'domain' => [$this->namespace($config['domain_namespace']), Path::normalize((string) ($config['domain_path'] ?? 'src/Domain'))],
-            'application' => [$this->namespace($config['application_namespace']), Path::normalize((string) ($config['application_path'] ?? 'app/Modules'))],
+            'domain' => [$this->namespace($config['domain_namespace']), str_replace('\\', '/', (string) ($config['domain_path'] ?? 'src/Domain'))],
+            'application' => [$this->namespace($config['application_namespace']), str_replace('\\', '/', (string) ($config['application_path'] ?? 'app/Modules'))],
         ];
 
         foreach ($roots as $name => [$namespace, $path]) {
@@ -267,7 +266,7 @@ final class ModUpgrade
                     $application[$kind] = true;
                 } else {
                     foreach ((array) ($config['layers'] ?? []) as $key => $path) {
-                        if (is_string($path) && str_starts_with($file, Path::normalize($path).'/')) {
+                        if (is_string($path) && str_starts_with($file, str_replace('\\', '/', $path).'/')) {
                             $layers[$key][$kind] = true;
                         }
                     }
@@ -292,7 +291,7 @@ final class ModUpgrade
                 continue;
             }
 
-            $path = Path::normalize($path);
+            $path = str_replace('\\', '/', $path);
 
             if (! is_dir($this->path($path))) {
                 $plan->converted[] = "Layer [{$key}] has no folder ({$path}) and is dropped.";
@@ -460,6 +459,10 @@ final class ModUpgrade
 
     public function rewrite(string $contents): string
     {
+        $original = $contents;
+        $newline = str_contains($contents, "\r\n") ? "\r\n" : "\n";
+        $contents = str_replace("\r\n", "\n", $contents);
+        $before = $contents;
         $hasFactory = 'use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;';
         $model = 'use Illuminate\\Database\\Eloquent\\Model;';
 
@@ -490,7 +493,7 @@ final class ModUpgrade
             $contents = preg_replace('/\bextends DomainFactory\b/', 'extends Factory', $contents);
         }
 
-        return $contents;
+        return $contents === $before ? $original : str_replace("\n", $newline, $contents);
     }
 
     /**
