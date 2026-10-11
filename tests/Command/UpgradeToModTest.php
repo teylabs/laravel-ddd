@@ -262,12 +262,12 @@ it('rewrites Laravel-DDD classes in application code to Laravel\'s own', functio
     $this->artisan('ddd:upgrade', ['--to' => 'mod', '--force' => true])->assertExitCode(0);
 
     expect(file_get_contents($base))
-        ->toContain("use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\n")
-        ->toContain("    use HasFactory;\n")
+        ->toContain('use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;'.PHP_EOL)
+        ->toContain('    use HasFactory;'.PHP_EOL)
         ->not->toContain('LaravelDDD')
         ->and(file_get_contents($aliased))
-        ->toContain("use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;\n")
-        ->toContain("    use HasFactory;\n")
+        ->toContain('use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;'.PHP_EOL)
+        ->toContain('    use HasFactory;'.PHP_EOL)
         ->not->toContain('LaravelDDD')
         ->and(file_get_contents($domainModel))->toBe(<<<'PHP'
             <?php
@@ -285,7 +285,7 @@ it('rewrites Laravel-DDD classes in application code to Laravel\'s own', functio
             }
             PHP)
         ->and(file_get_contents($factory))
-        ->toContain("use Illuminate\\Database\\Eloquent\\Factories\\Factory;\n")
+        ->toContain('use Illuminate\\Database\\Eloquent\\Factories\\Factory;'.PHP_EOL)
         ->toContain('class UpgradePaymentFactory extends Factory')
         ->not->toContain('LaravelDDD');
 });
