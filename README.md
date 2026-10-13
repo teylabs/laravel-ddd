@@ -109,6 +109,8 @@ After updating Laravel-DDD, run `php artisan boost:update` to refresh previously
 
 See the [skill source](resources/boost/skills/laravel-ddd-development/SKILL.md) for its scope. This guidance ships with the package version you install; it does not imply that Laravel-DDD documentation is indexed by Boost's hosted documentation search.
 
+For an agent-readable documentation index, see [llms.txt](llms.txt). Agents working on this package should also read [AGENTS.md](AGENTS.md) for gates, conventions and the 4.0 compatibility contract.
+
 ## Available Commands
 ### Generators
 The following generators are currently available:
