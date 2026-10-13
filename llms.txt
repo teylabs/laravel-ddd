@@ -1,0 +1,34 @@
+# Laravel-DDD
+
+> A Laravel toolkit for domain-driven generators, configured layers and discovery. Version 4.0 builds on tey/mod and keeps 3.x behaviour except for the differences in the upgrade guide.
+
+These links target the default branch after 4.0 merges. For a published version, consult the same paths at its release tag and the installed package source.
+
+## README
+
+- [Overview and contents](https://github.com/teylabs/laravel-ddd/blob/main/README.md): Package scope and documentation navigation.
+- [Installation](https://github.com/teylabs/laravel-ddd/blob/main/README.md#installation): Requirements, Composer installation, configuration and optional peer dependencies.
+- [Quick start](https://github.com/teylabs/laravel-ddd/blob/main/README.md#quick-start): First generator run and domain syntax.
+- [AI-assisted development](https://github.com/teylabs/laravel-ddd/blob/main/README.md#ai-assisted-development): Optional Boost guideline and skill installation in an application.
+- [Available commands](https://github.com/teylabs/laravel-ddd/blob/main/README.md#available-commands): Generators, configuration utility and cache commands.
+- [Advanced usage](https://github.com/teylabs/laravel-ddd/blob/main/README.md#advanced-usage): Application/custom layers, nesting, namespace overrides and custom object resolution.
+- [Customizing stubs](https://github.com/teylabs/laravel-ddd/blob/main/README.md#customizing-stubs): Stub precedence and publishing options.
+- [Domain autoloading and discovery](https://github.com/teylabs/laravel-ddd/blob/main/README.md#domain-autoloading-and-discovery): Providers, commands, policies, factories, migrations, listeners and exclusions.
+- [Custom generators and moving to tey/mod](https://github.com/teylabs/laravel-ddd/blob/main/README.md#custom-generators-and-moving-to-teymod): The optional move to plain Mod for custom generators and layouts.
+- [Autoloading in production](https://github.com/teylabs/laravel-ddd/blob/main/README.md#autoloading-in-production): Deployment caches, stale recovery and Composer classmap limitations.
+- [Configuration file](https://github.com/teylabs/laravel-ddd/blob/main/README.md#configuration-file): Settings reference and configuration sync.
+- [Testing](https://github.com/teylabs/laravel-ddd/blob/main/README.md#testing): Contributor setup, tests, static analysis and style checks.
+- [Changelog](https://github.com/teylabs/laravel-ddd/blob/main/README.md#changelog): Release history entry point.
+- [Security vulnerabilities](https://github.com/teylabs/laravel-ddd/blob/main/README.md#security-vulnerabilities): Where to find the reporting policy.
+- [Credits](https://github.com/teylabs/laravel-ddd/blob/main/README.md#credits): Maintainer and contributors.
+- [Licence](https://github.com/teylabs/laravel-ddd/blob/main/README.md#licence): Licence information.
+
+## Upgrade guides
+
+- [Upgrading](https://github.com/teylabs/laravel-ddd/blob/main/UPGRADING.md): Migration instructions for all major versions, including the 3.x to 4.0 compatibility differences.
+- [Moving from Laravel-DDD to tey/mod](https://github.com/teylabs/laravel-ddd/blob/main/UPGRADING.md#moving-from-laravel-ddd-to-teymod): Preview/apply workflow, preserved customizations and migration blockers.
+
+## Agent guidance
+
+- [Working on the package](https://github.com/teylabs/laravel-ddd/blob/main/AGENTS.md): Gates, conventions, compatibility contract and Git/PR rules for this repository.
+- [Laravel-DDD development skill](https://github.com/teylabs/laravel-ddd/blob/main/resources/boost/skills/laravel-ddd-development/SKILL.md): Application-facing generators, layers, stubs and discovery guidance shipped with the package.
