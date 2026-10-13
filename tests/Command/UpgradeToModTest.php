@@ -362,7 +362,7 @@ it('runs the Composer changes when asked, removing Laravel-DDD last', function (
 
     $this->artisan('ddd:upgrade', ['--to' => 'mod', '--force' => true, '--composer' => true])->assertExitCode(0);
 
-    expect($ran)->toBe(['composer require tey/mod:^0.5', 'composer remove tey/laravel-ddd']);
+    expect($ran)->toBe(['composer require tey/mod:^0.7', 'composer remove tey/laravel-ddd']);
 });
 
 it('runs no Composer command without --composer', function () {

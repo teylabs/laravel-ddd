@@ -6,7 +6,7 @@ v4 rebuilds Laravel-DDD's internals on [tey/mod](https://github.com/teylabs/mod)
 changes are listed below.
 
 - Laravel-DDD 4.0 requires PHP 8.3+ and Laravel 12 or 13. Laravel 11 applications stay on the 3.x line.
-- tey/laravel-ddd 4.0 depends on tey/mod ^0.5, which Composer installs automatically. Laravel-DDD registers no mod:* commands and does not register mod's service provider (it is listed under `extra.laravel.dont-discover`).
+- tey/laravel-ddd 4.0 depends on tey/mod ^0.7, which Composer installs automatically. Laravel-DDD registers no mod:* commands and does not register mod's service provider (it is listed under `extra.laravel.dont-discover`).
 - tey/laravel-ddd 4.0 no longer requires lorisleiva/lody. If your application used Lody only through this package, require it yourself.
 - Discovered providers, commands and listeners register in sorted file-path order within each discovery path (3.x used raw filesystem order).
 - Run `php artisan ddd:optimize` (or `optimize`) after upgrading: discovery is now cached in `ddd-discovery.php` and `ddd-migration-paths.php`, the 3.x `ddd-domain-*.php` cache files are ignored, and `ddd:optimize` reports two tasks; rolling back to 3.x needs `ddd:clear` then `ddd:optimize`. Mod uses discovery cache schema 2; rebuild any earlier v4 caches with `ddd:clear` then `ddd:optimize`.

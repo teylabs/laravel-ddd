@@ -36,7 +36,7 @@ final class ModUpgradePlan
     public array $providers = [];
 
     /** @var list<list<string>> */
-    public array $composer = [['composer', 'require', 'tey/mod:^0.5'], ['composer', 'remove', 'tey/laravel-ddd']];
+    public array $composer = [['composer', 'require', 'tey/mod:^0.7'], ['composer', 'remove', 'tey/laravel-ddd']];
 
     /** @var list<string> */
     public array $nextSteps = [];
