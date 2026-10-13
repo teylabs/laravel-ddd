@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    # Stacked pull requests need the same checks before they merge upward.
-    branches: [main, next, develop, develop-internals, chore/framework-compatibility, fix/listener-discovery-filtering, refactor/test-harness-isolation, docs/readme-refresh, test/complete-pending-coverage, v4/rebuild-on-mod]
 
 jobs:
   llms-links:
