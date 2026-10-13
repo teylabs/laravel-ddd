@@ -1,0 +1,38 @@
+name: standards
+
+on:
+  push:
+    branches: [main, '*.x']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  standards:
+    name: CI standards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # tey/standards is a tool, not a package dependency: it needs PHP 8.4 and
+      # Laravel 13 components, which this package's PHP 8.3 and Laravel 12 legs can't
+      # install. It only reads the workflows and composer.json.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install tey/standards
+        run: composer global require tey/standards:^0.6 --no-interaction --no-progress
+
+      - name: Check CI standards
+        run: |
+          "$(composer global config bin-dir --absolute --quiet)/standards" ci --strict
