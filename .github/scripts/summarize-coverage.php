@@ -29,13 +29,10 @@ const STATUS_FAILED = 'failed';
  * duplicated and unexpected keys all block.
  */
 const EXPECTED_KEYS = [
-    'released-l11',
     'released-l12',
     'released-l13',
-    'lowest-l11',
     'lowest-l12',
     'lowest-l13',
-    'floor-11-44-0',
     'floor-12-0-0',
     'floor-13-0-0',
 ];

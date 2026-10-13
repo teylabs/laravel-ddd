@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\EnumMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\EnumCommand;
 
-class DomainEnumMakeCommand extends EnumMakeCommand
+class DomainEnumMakeCommand extends EnumCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

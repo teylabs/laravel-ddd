@@ -5,12 +5,15 @@ namespace Tey\LaravelDDD\Commands;
 use Illuminate\Database\Console\Factories\FactoryMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\InteractsWithStubs;
+use Tey\LaravelDDD\Commands\Concerns\MapsRelatedKinds;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\FactoryCommand;
 
-class DomainFactoryMakeCommand extends FactoryMakeCommand
+class DomainFactoryMakeCommand extends FactoryCommand
 {
     use HasDomainStubs,
         InteractsWithStubs,
+        MapsRelatedKinds,
         ResolvesDomainFromInput;
 
     protected $name = 'ddd:factory';
@@ -18,6 +21,15 @@ class DomainFactoryMakeCommand extends FactoryMakeCommand
     protected function getStub()
     {
         return $this->resolveDddStubPath('factory.stub');
+    }
+
+    /**
+     * The domain factory stub names its model itself; render it as natively,
+     * then fill the domain placeholders.
+     */
+    protected function buildClass($name)
+    {
+        return $this->applyPlaceholders(FactoryMakeCommand::buildClass($name));
     }
 
     protected function getNamespace($name)

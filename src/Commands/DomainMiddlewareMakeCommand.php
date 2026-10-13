@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Routing\Console\MiddlewareMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\MiddlewareCommand;
 
-class DomainMiddlewareMakeCommand extends MiddlewareMakeCommand
+class DomainMiddlewareMakeCommand extends MiddlewareCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

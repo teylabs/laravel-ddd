@@ -38,6 +38,26 @@ it('can clear cache', function () {
     expect(DomainCache::has('three'))->toBeFalse();
 });
 
+it('uses the default directory for every operation when the cache directory is null or empty', function (?string $directory) {
+    config()->set('ddd.cache_directory', $directory);
+    $file = base_path('bootstrap/cache/ddd/ddd-unset-directory.php');
+
+    DomainCache::set('unset-directory', ['a']);
+
+    expect(DomainCache::path('unset-directory'))->toBe($file)
+        ->and(is_file($file))->toBeTrue()
+        ->and(is_file(base_path('ddd-unset-directory.php')))->toBeFalse()
+        ->and(DomainCache::has('unset-directory'))->toBeTrue()
+        ->and(DomainCache::get('unset-directory'))->toBe(['a']);
+
+    DomainCache::forget('unset-directory');
+    expect(is_file($file))->toBeFalse();
+
+    DomainCache::set('unset-directory', ['b']);
+    DomainCache::clear();
+    expect(is_file($file))->toBeFalse();
+})->with(['null' => [null], 'empty' => ['']]);
+
 describe('with a null cache directory', function () {
     beforeEach(function () {
         config(['ddd.cache_directory' => null]);

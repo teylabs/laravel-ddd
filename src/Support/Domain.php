@@ -2,6 +2,7 @@
 
 namespace Tey\LaravelDDD\Support;
 
+use Tey\LaravelDDD\Support\Layout\DddPlacement;
 use Tey\LaravelDDD\ValueObjects\DomainObject;
 
 class Domain
@@ -128,28 +129,21 @@ class Domain
             ->toString();
     }
 
+    /**
+     * Describe an object of this domain where the layout places it (mod decides
+     * the namespace and path; the layer is chosen live for the type).
+     */
     public function object(string $type, string $name, bool $absolute = false): DomainObject
     {
-        $layer = $this->intendedLayerFor($type);
-
-        $namespace = $layer->namespaceForObject($type, $name, $absolute);
-
-        // A namespace-relative name ("\Nested\Probe") already carries its folders in $namespace.
-        $baseName = str(! $absolute && str_starts_with($name, '\\') ? class_basename($name) : $name)
-            ->replace($namespace, '')
-            ->replace(['\\', '/'], '\\')
-            ->trim('\\')
-            ->when($type === 'factory', fn ($name) => $name->finish('Factory'))
-            ->toString();
-
-        $fullyQualifiedName = $namespace.'\\'.$baseName;
+        $artifact = DddPlacement::current()->resolve($type, $this, $name, $absolute);
+        $relative = ! $absolute && DddPlacement::isNamespaceRelative($name);
 
         return new DomainObject(
-            name: $baseName,
+            name: DddPlacement::nameOf($artifact, $relative),
             domain: $this->domain,
-            namespace: $namespace,
-            fullyQualifiedName: $fullyQualifiedName,
-            path: $layer->path($fullyQualifiedName),
+            namespace: DddPlacement::namespaceOf($artifact, $relative),
+            fullyQualifiedName: (string) $artifact->fqcn(),
+            path: Path::normalize($artifact->path()),
             type: $type
         );
     }

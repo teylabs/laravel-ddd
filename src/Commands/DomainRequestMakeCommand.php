@@ -2,13 +2,13 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\RequestMakeCommand;
 use Illuminate\Support\Str;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
 use Tey\LaravelDDD\Support\DomainResolver;
+use Tey\Mod\Commands\RequestCommand;
 
-class DomainRequestMakeCommand extends RequestMakeCommand
+class DomainRequestMakeCommand extends RequestCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

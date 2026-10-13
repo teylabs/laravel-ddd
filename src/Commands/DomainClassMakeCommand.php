@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ClassMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ClassCommand;
 
-class DomainClassMakeCommand extends ClassMakeCommand
+class DomainClassMakeCommand extends ClassCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

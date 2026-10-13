@@ -260,3 +260,21 @@ it('lets custom handlers return without preparing or resolving a schema', functi
     expect(Artisan::call('ddd:class', ['name' => 'UnqualifiedName']))->toBe(23)
         ->and(file_exists(base_path('src/Domain/UnqualifiedName.php')))->toBeFalse();
 });
+
+it('leaves duplicate files untouched and exits 0 like make:*', function ($command, $path) {
+    $arguments = ['name' => 'Billing:Invoice'];
+
+    expect(Artisan::call($command, $arguments))->toBe(0);
+
+    file_put_contents(base_path($path), "// kept\n", FILE_APPEND);
+    $kept = file_get_contents(base_path($path));
+
+    expect(Artisan::call($command, $arguments))->toBe(0)
+        ->and(Artisan::output())->toContain('already exists')
+        ->and(file_get_contents(base_path($path)))->toBe($kept)
+        ->and(Artisan::call($command, $arguments + ['--force' => true]))->toBe(0)
+        ->and(file_get_contents(base_path($path)))->not->toBe($kept);
+})->with([
+    'model' => ['ddd:model', 'src/Domain/Billing/Models/Invoice.php'],
+    'class' => ['ddd:class', 'src/Domain/Billing/Invoice.php'],
+]);

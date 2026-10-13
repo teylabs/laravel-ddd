@@ -354,3 +354,32 @@ PHP);
 
     unlink(config_path('ddd.php'));
 });
+
+it('registers the full namespace of a layer whose root namespace is not registered', function () {
+    file_put_contents(config_path('ddd.php'), <<<'PHP'
+<?php
+return [
+    'domain_path' => 'src/Domain',
+    'domain_namespace' => 'Domain',
+    'application_path' => 'app/Modules',
+    'application_namespace' => 'App\\Modules',
+    'layers' => [
+        'Acme\\Billing' => 'src/Billing',
+    ],
+];
+PHP);
+
+    $this->artisan('config:cache')->assertSuccessful()->execute();
+
+    $this->artisan('ddd:config composer')->assertSuccessful()->execute();
+
+    $psr4 = json_decode(file_get_contents(base_path('composer.json')), true)['autoload']['psr-4'];
+
+    expect($psr4)->toHaveKey('Acme\\Billing\\')
+        ->and($psr4['Acme\\Billing\\'])->toBe('src/Billing')
+        ->and($psr4)->not->toHaveKey('Acme\\');
+
+    $this->artisan('config:clear')->assertSuccessful()->execute();
+
+    unlink(config_path('ddd.php'));
+});

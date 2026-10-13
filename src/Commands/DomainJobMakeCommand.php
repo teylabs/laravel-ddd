@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\JobMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\JobCommand;
 
-class DomainJobMakeCommand extends JobMakeCommand
+class DomainJobMakeCommand extends JobCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

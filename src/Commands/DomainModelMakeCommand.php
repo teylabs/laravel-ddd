@@ -6,13 +6,18 @@ use Illuminate\Foundation\Console\ModelMakeCommand;
 use Illuminate\Support\Str;
 use Tey\LaravelDDD\Commands\Concerns\ForwardsToDomainCommands;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
+use Tey\LaravelDDD\Commands\Concerns\MapsRelatedKinds;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
 use Tey\LaravelDDD\Support\DomainResolver;
+use Tey\Mod\Artifact\ResolvedArtifact;
+use Tey\Mod\Commands\ModelCommand;
+use Tey\Mod\Relation\RelationResolution;
 
-class DomainModelMakeCommand extends ModelMakeCommand
+class DomainModelMakeCommand extends ModelCommand
 {
     use ForwardsToDomainCommands,
         HasDomainStubs,
+        MapsRelatedKinds,
         ResolvesDomainFromInput;
 
     protected $name = 'ddd:model';
@@ -23,11 +28,13 @@ class DomainModelMakeCommand extends ModelMakeCommand
     }
 
     /**
-     * @return bool|null
+     * @return bool|int|null
      */
     public function handle()
     {
         $this->beforeHandle();
+
+        $this->resolvePlan();
 
         $this->createBaseModelIfNeeded();
 
@@ -47,24 +54,56 @@ class DomainModelMakeCommand extends ModelMakeCommand
         return is_bool($result) ? $result : null;
     }
 
-    protected function buildFactoryReplacements()
+    /**
+     * --requests without a controller has no relation to follow from the
+     * model: the requests are generated as natively (forwarded to ddd:request).
+     *
+     * @return list<RelationResolution>
+     */
+    protected function plannedRelations(ResolvedArtifact $primary): array
     {
-        $replacements = parent::buildFactoryReplacements();
-
-        // Native make:model sets --factory for --all only after the model is built.
-        if ($this->option('factory') || $this->option('all')) {
-            $factoryNamespace = Str::start($this->blueprint->getFactoryFor($this->getNameInput())->fullyQualifiedName, '\\');
-
-            $factoryCode = <<<EOT
-            /** @use HasFactory<$factoryNamespace> */
-                use HasFactory;
-            EOT;
-
-            $replacements['{{ factory }}'] = $factoryCode;
-            $replacements['{{ factoryImport }}'] = 'use Tey\LaravelDDD\Factories\HasDomainFactory as HasFactory;';
+        if (! $this->option('requests') || $this->option('controller') || $this->option('resource') || $this->option('api') || $this->option('all')) {
+            return parent::plannedRelations($primary);
         }
 
-        return $replacements;
+        $this->input->setOption('requests', false);
+
+        try {
+            return parent::plannedRelations($primary);
+        } finally {
+            $this->input->setOption('requests', true);
+        }
+    }
+
+    protected function createFormRequests()
+    {
+        ModelMakeCommand::createFormRequests();
+    }
+
+    /**
+     * HasFactory names the factory the model's relation resolved (also for
+     * --all), through HasDomainFactory; without a factory, as natively.
+     */
+    protected function buildFactoryReplacements()
+    {
+        $factory = collect($this->currentPlan()->relations)
+            ->first(fn (RelationResolution $resolution) => $resolution->relation->toFileType === $this->relatedFileType('factory'))?->target?->fqcn();
+
+        if ($factory === null) {
+            return ModelMakeCommand::buildFactoryReplacements();
+        }
+
+        $factoryNamespace = Str::start($factory, '\\');
+
+        $factoryCode = <<<EOT
+        /** @use HasFactory<$factoryNamespace> */
+            use HasFactory;
+        EOT;
+
+        return [
+            '{{ factory }}' => $factoryCode,
+            '{{ factoryImport }}' => 'use Tey\LaravelDDD\Factories\HasDomainFactory as HasFactory;',
+        ];
     }
 
     protected function buildClass($name)

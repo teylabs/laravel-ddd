@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ConsoleMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ConsoleCommand;
 
-class DomainConsoleMakeCommand extends ConsoleMakeCommand
+class DomainConsoleMakeCommand extends ConsoleCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

@@ -5,7 +5,7 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/teylabs/laravel-ddd/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/teylabs/laravel-ddd/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/tey/laravel-ddd.svg?style=flat-square)](https://packagist.org/packages/tey/laravel-ddd)
 
-Laravel-DDD is a toolkit to support domain driven design (DDD) in Laravel applications. One of the pain points when adopting DDD is the inability to use Laravel's native `make` commands to generate objects outside the `App\*` namespace. This package aims to fill the gaps by providing equivalent commands such as `ddd:model`, `ddd:dto`, `ddd:view-model` and many more.
+Laravel-DDD is a toolkit to support domain driven design (DDD) in Laravel applications. Version 4.0 builds on [tey/mod](https://github.com/teylabs/mod), keeping the `ddd:*` commands, folders and `config/ddd.php`. See [the upgrade guide](UPGRADING.md#from-3x-to-400) for the changes from 3.x. One of the pain points when adopting DDD is the inability to use Laravel's native `make` commands to generate objects outside the `App\*` namespace. This package aims to fill the gaps by providing equivalent commands such as `ddd:model`, `ddd:dto`, `ddd:view-model` and many more.
 
 Built by [Jasper Tey](https://github.com/jaspertey) at [Tey Labs](https://teylabs.com), and made better by [our contributors](https://github.com/teylabs/laravel-ddd/graphs/contributors).
 
@@ -23,7 +23,7 @@ Built by [Jasper Tey](https://github.com/jaspertey) at [Tey Labs](https://teylab
 - [Contributing and testing](#testing)
 
 ## Installation
-The current 3.x development branch requires PHP 8.3 or later (below 9.0), and Laravel 11.44+, 12.x, or 13.x. Your Laravel version may impose additional PHP requirements. For an installed release, consult its tagged README and Composer constraints.
+Laravel-DDD 4.0 requires PHP 8.3+ (below 9.0) and Laravel 12 or 13. Laravel 11 applications stay on the 3.x line. Your Laravel version may impose additional PHP requirements. For an installed release, consult its tagged README and Composer constraints.
 
 Install via Composer:
 
@@ -108,6 +108,8 @@ Select guidelines and skills, choose `tey/laravel-ddd` when prompted for third-p
 After updating Laravel-DDD, run `php artisan boost:update` to refresh previously selected resources. To select the package in an existing Boost installation, rerun `boost:install`.
 
 See the [skill source](resources/boost/skills/laravel-ddd-development/SKILL.md) for its scope. This guidance ships with the package version you install; it does not imply that Laravel-DDD documentation is indexed by Boost's hosted documentation search.
+
+For an agent-readable documentation index, see [llms.txt](llms.txt). Agents working on this package should also read [AGENTS.md](AGENTS.md) for gates, conventions and the 4.0 compatibility contract.
 
 ## Available Commands
 ### Generators
@@ -498,9 +500,28 @@ Disable each mechanism explicitly in `config/ddd.php`:
 
 Removing or commenting out the block does **not** disable discovery: missing configuration is filled from the package defaults. Rebuild configuration and discovery caches after changing these settings.
 
+## Custom generators and moving to tey/mod
+
+For custom generators, additional layouts or routes beside your domains, move to plain
+[tey/mod](https://github.com/teylabs/mod). Its `ddd` layout preserves the default folders,
+and templates provide commands without a `DomainGeneratorCommand` subclass.
+
+```bash
+php artisan ddd:upgrade --to=mod            # preview the plan and diffs
+php artisan ddd:upgrade --to=mod --force    # apply the reviewed changes
+php artisan ddd:upgrade --to=mod --force --composer  # also replace the Composer dependency
+```
+
+The command carries over supported configuration, published stubs and model/factory base
+classes. It reports blockers and writes nothing when a customization cannot be preserved.
+See [the migration guide](UPGRADING.md#moving-from-laravel-ddd-to-teymod) before applying it.
+Staying on Laravel-DDD does not require this move.
+
 <a name="autoloading-in-production"></a>
 
 ## Autoloading in Production
+
+Discovery runs in sorted file-path order within each configured path, without Lody. The package writes `ddd-discovery.php` and `ddd-migration-paths.php`; it does not write caches during application boot.
 
 In production, you should cache the autoload manifests using the `ddd:optimize` command as part of your application's deployment process. This will speed up the auto-discovery and registration of domain providers and commands. The `ddd:clear` command may be used to clear the cache if needed. If you are already running `php artisan optimize`, `ddd:optimize` will be included within that pipeline. The framework's `optimize` and `optimize:clear` commands will automatically invoke `ddd:optimize` and `ddd:clear` respectively.
 
@@ -528,7 +549,7 @@ After changing layer mappings, run `php artisan ddd:config composer` and rebuild
 
 ## Testing
 
-Clone the repository with its Git history, install development dependencies, and use PHP 8.3+ with the extensions required by Composer, including `ext-zip` for the frozen consumer comparison. Git and Composer must be available on your PATH. Composer will enforce any additional requirements of the selected development dependencies.
+Clone the repository, install development dependencies, and use PHP 8.3+ with the extensions required by Composer. Composer must be available on your PATH. Composer will enforce any additional requirements of the selected development dependencies.
 
 ```bash
 composer install
@@ -537,7 +558,7 @@ composer analyse
 vendor/bin/pint --test
 ```
 
-The [consumer comparison harness](tests/Consumer/README.md) needs its pinned baseline commit in local history; shallow clones must fetch that history. Use `composer format` to apply formatting. Tests use isolated application fixtures; the comparison checks a bounded set of consumer behaviours, not complete compatibility for every layout.
+Use `composer format` to apply formatting. Package tests use isolated application fixtures.
 
 The main branch may contain unreleased changes. Use a release tag's README when checking behaviour of a published version.
 

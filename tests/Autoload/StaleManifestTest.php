@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Event;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Tests\BootsTestApplication;
+use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 uses(BootsTestApplication::class);
 
@@ -19,27 +20,23 @@ afterEach(fn () => DomainCache::clear());
 
 it('rediscovers stale listeners without rewriting the manifest', function ($entry) {
     $manifest = ['listeners' => [], 'subscribers' => []];
-    if ($entry === 'subscriber') {
-        $manifest['subscribers'][] = 'Domain\\RemovedSubscriber';
-    } else {
-        $manifest['listeners'][InvoiceTracked::class][] = $entry;
-    }
-    DomainCache::set('domain-listeners', $manifest);
+    $manifest['listeners'][InvoiceTracked::class][] = $entry;
+    $written = DiscoveryCacheFixture::write(['listeners' => $manifest]);
 
     (new AutoloadManager)->run();
     Event::dispatch($event = new InvoiceTracked);
 
     expect($event->calls)->toContain('domain-listener')
-        ->and(DomainCache::get('domain-listeners'))->toBe($manifest);
+        ->and(file_get_contents(DomainCache::path('discovery')))->toBe($written);
 })->with([
     'class' => ['Domain\\RemovedListener'],
     'method string' => ['Domain\\RemovedListener@handle'],
     'method array' => [['Domain\\RemovedListener', 'handle']],
-    'subscriber' => ['subscriber'],
+    'subscriber' => [['Domain\\RemovedSubscriber', 'handle']],
 ]);
 
 it('rediscovers stale provider and command inventories', function ($category) {
-    DomainCache::set('domain-'.$category, ['Domain\\RemovedAsset']);
+    DiscoveryCacheFixture::write([$category => ['Domain\\RemovedAsset']]);
     $manager = new AutoloadManager;
     $expected = $category === 'providers' ? $manager->discoverProviders() : $manager->discoverCommands();
     expect($expected)->not->toBeEmpty();
@@ -51,7 +48,7 @@ it('rediscovers stale provider and command inventories', function ($category) {
 })->with(['providers', 'commands']);
 
 it('keeps a valid empty manifest authoritative', function () {
-    DomainCache::set('domain-listeners', ['listeners' => [], 'subscribers' => []]);
+    DiscoveryCacheFixture::write(['listeners' => ['listeners' => [], 'subscribers' => []]]);
     (new AutoloadManager)->run();
     Event::dispatch($event = new InvoiceTracked);
     expect($event->calls)->not->toContain('domain-listener');
@@ -65,10 +62,10 @@ it('does not swallow autoload errors while validating the cache', function () {
     };
     spl_autoload_register($loader);
     try {
-        DomainCache::set('domain-listeners', [
+        DiscoveryCacheFixture::write(['listeners' => [
             'listeners' => [InvoiceTracked::class => ['Domain\\BrokenListener']],
             'subscribers' => [],
-        ]);
+        ]]);
         expect(fn () => (new AutoloadManager)->boot())->toThrow(RuntimeException::class, 'Broken dependency');
     } finally {
         spl_autoload_unregister($loader);
@@ -77,9 +74,7 @@ it('does not swallow autoload errors while validating the cache', function () {
 
 it('uses healthy cached inventories without rescanning', function () {
     $source = new AutoloadManager;
-    DomainCache::set('domain-providers', $source->discoverProviders());
-    DomainCache::set('domain-commands', $source->discoverCommands());
-    DomainCache::set('domain-listeners', $source->discoverListeners());
+    DiscoveryCacheFixture::write(['providers' => $source->discoverProviders(), 'commands' => $source->discoverCommands(), 'listeners' => $source->discoverListeners()]);
 
     $manager = new class extends AutoloadManager
     {
@@ -104,15 +99,17 @@ it('uses healthy cached inventories without rescanning', function () {
 });
 
 it('does not suppress errors from an existing subscriber', function () {
-    DomainCache::set('domain-listeners', [
-        'listeners' => [],
+    DiscoveryCacheFixture::write(['listeners' => [
+        'listeners' => [InvoiceTracked::class => [BrokenCachedSubscriber::class]],
         'subscribers' => [BrokenCachedSubscriber::class],
-    ]);
+    ]]);
     expect(fn () => (new AutoloadManager)->run())->toThrow(RuntimeException::class, 'Subscriber failed');
 });
 
 class BrokenCachedSubscriber
 {
+    public function handle(InvoiceTracked $event): void {}
+
     public function subscribe($events): void
     {
         throw new RuntimeException('Subscriber failed');
@@ -128,10 +125,10 @@ it('recovers a deleted Composer classmap file without rebuilding autoload', func
     $loader->addClassMap(['Domain\\RemovedMappedListener' => $file]);
     $loader->register(true);
     try {
-        DomainCache::set('domain-listeners', [
+        DiscoveryCacheFixture::write(['listeners' => [
             'listeners' => [InvoiceTracked::class => ['Domain\\RemovedMappedListener']],
             'subscribers' => [],
-        ]);
+        ]]);
         unlink($file);
 
         (new AutoloadManager)->run();
@@ -157,10 +154,10 @@ it('propagates errors inside an existing Composer mapped file', function () {
     $loader->addClassMap(['Domain\\BrokenMappedListener' => $file]);
     $loader->register(true);
     try {
-        DomainCache::set('domain-listeners', [
+        DiscoveryCacheFixture::write(['listeners' => [
             'listeners' => [InvoiceTracked::class => ['Domain\\BrokenMappedListener']],
             'subscribers' => [],
-        ]);
+        ]]);
         expect(fn () => (new AutoloadManager)->boot())
             ->toThrow(RuntimeException::class, 'Mapped file is broken');
     } finally {
@@ -172,31 +169,31 @@ it('propagates errors inside an existing Composer mapped file', function () {
 
 it('rediscovers a cached listener whose handler was removed', function ($listener) {
     $manifest = ['listeners' => [InvoiceTracked::class => [$listener]], 'subscribers' => []];
-    DomainCache::set('domain-listeners', $manifest);
+    $written = DiscoveryCacheFixture::write(['listeners' => $manifest]);
     (new AutoloadManager)->run();
     Event::dispatch($event = new InvoiceTracked);
     expect($event->calls)->toContain('domain-listener')
-        ->and(DomainCache::get('domain-listeners'))->toBe($manifest);
+        ->and(file_get_contents(DomainCache::path('discovery')))->toBe($written);
 })->with([
     'method string' => ['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener@handleRemoved'],
     'method array' => [['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener', 'handleRemoved']],
 ]);
 
 it('rediscovers a subscriber whose subscribe method was removed', function () {
-    DomainCache::set('domain-listeners', [
-        'listeners' => [],
+    DiscoveryCacheFixture::write(['listeners' => [
+        'listeners' => [InvoiceTracked::class => [['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener', 'subscribe']]],
         'subscribers' => ['Domain\\Invoicing\\Listeners\\TrackedInvoiceListener'],
-    ]);
+    ]]);
     (new AutoloadManager)->run();
     Event::dispatch($event = new InvoiceTracked);
     expect($event->calls)->toContain('domain-listener');
 });
 
 it('preserves the framework invokable fallback for cached handlers', function () {
-    DomainCache::set('domain-listeners', [
+    DiscoveryCacheFixture::write(['listeners' => [
         'listeners' => [InvoiceTracked::class => [CachedInvokableListener::class.'@removed']],
         'subscribers' => [],
-    ]);
+    ]]);
     (new AutoloadManager)->run();
     Event::dispatch($event = new InvoiceTracked);
     expect($event->calls)->toBe(['cached-invokable']);

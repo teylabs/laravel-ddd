@@ -2,13 +2,15 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ListenerMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
+use Tey\LaravelDDD\Commands\Concerns\MapsRelatedKinds;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ListenerCommand;
 
-class DomainListenerMakeCommand extends ListenerMakeCommand
+class DomainListenerMakeCommand extends ListenerCommand
 {
     use HasDomainStubs,
+        MapsRelatedKinds,
         ResolvesDomainFromInput;
 
     protected $name = 'ddd:listener';

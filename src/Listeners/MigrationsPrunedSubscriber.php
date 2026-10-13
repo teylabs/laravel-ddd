@@ -31,7 +31,8 @@ class MigrationsPrunedSubscriber
     }
 
     /**
-     * Register the listeners for the subscriber.
+     * Register the listeners for the subscriber, once per dispatcher: a second
+     * subscription would prune (and announce) every directory twice.
      */
     public function subscribe(Dispatcher $events): void
     {

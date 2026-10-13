@@ -37,7 +37,7 @@ class DomainViewModelMakeCommand extends DomainGeneratorCommand
     protected function preparePlaceholders(): array
     {
         $baseClass = config('ddd.base_view_model');
-        $baseClassName = class_basename($baseClass);
+        $baseClassName = filled($baseClass) ? class_basename($baseClass) : '';
 
         return [
             'extends' => filled($baseClass) ? " extends {$baseClassName}" : '',

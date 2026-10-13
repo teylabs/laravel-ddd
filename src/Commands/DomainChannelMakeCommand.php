@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ChannelMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ChannelCommand;
 
-class DomainChannelMakeCommand extends ChannelMakeCommand
+class DomainChannelMakeCommand extends ChannelCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

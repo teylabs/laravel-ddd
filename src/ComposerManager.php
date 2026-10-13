@@ -7,6 +7,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Composer;
 use Illuminate\Support\Str;
 use RuntimeException;
+use stdClass;
 use Tey\LaravelDDD\Support\Path;
 
 class ComposerManager
@@ -18,10 +19,11 @@ class ComposerManager
     protected array $data;
 
     /**
-     * The file contents decoded with JSON objects kept as objects, used to
-     * write empty objects back as {} rather than [].
+     * The paths (keys joined by "\0") that hold a JSON object in the file as read.
+     *
+     * @var array<string, true>
      */
-    protected mixed $shape;
+    protected array $objects = [];
 
     protected ?OutputStyle $output = null;
 
@@ -31,25 +33,61 @@ class ComposerManager
 
         $this->composerFile = $composerFile ?? app()->basePath('composer.json');
 
-        $contents = is_file($this->composerFile) ? @file_get_contents($this->composerFile) : false;
+        $json = is_file($this->composerFile) ? @file_get_contents($this->composerFile) : false;
 
-        if ($contents === false) {
+        if ($json === false) {
             throw new RuntimeException("{$this->composerFile} could not be read.");
         }
 
-        $data = json_decode($contents, true);
+        $data = json_decode($json);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new RuntimeException("{$this->composerFile} is not valid JSON: ".json_last_error_msg());
         }
 
-        if (! is_array($data)) {
+        if (! $data instanceof stdClass) {
             throw new RuntimeException("{$this->composerFile} is not a JSON object.");
         }
 
-        $this->data = $data;
+        $this->recordObjects($data, []);
 
-        $this->shape = json_decode($contents);
+        $this->data = json_decode($json, true);
+    }
+
+    /**
+     * Remember where the file holds JSON objects, so an empty one saves back as {} and not [].
+     */
+    protected function recordObjects(mixed $value, array $path): void
+    {
+        if ($value instanceof stdClass) {
+            $this->objects[implode("\0", $path)] = true;
+        }
+
+        if ($value instanceof stdClass || is_array($value)) {
+            foreach ($value as $key => $child) {
+                $this->recordObjects($child, [...$path, $key]);
+            }
+        }
+    }
+
+    /**
+     * The data for json_encode: an empty array where the file had an object becomes {}.
+     */
+    protected function encodable(mixed $value, array $path = []): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === [] && isset($this->objects[implode("\0", $path)])) {
+            return new stdClass;
+        }
+
+        foreach ($value as $key => $child) {
+            $value[$key] = $this->encodable($child, [...$path, $key]);
+        }
+
+        return $value;
     }
 
     public static function make(?string $composerFile = null): self
@@ -66,16 +104,10 @@ class ComposerManager
 
     protected function guessAutoloadPathFromNamespace(string $namespace): string
     {
-        $rootFolders = [
-            'src',
-            '',
-        ];
-
         $relativePath = Str::rtrim(Path::fromNamespace($namespace), '/\\');
 
-        foreach ($rootFolders as $folder) {
-            $path = $folder === '' ? $relativePath : Path::join($folder, $relativePath);
-
+        // Candidates are relative to the application's base path: src/{path}, then {path}.
+        foreach ([Path::join('src', $relativePath), $relativePath] as $path) {
             if (is_dir(app()->basePath($path))) {
                 return $this->normalizePathForComposer($path);
             }
@@ -168,7 +200,11 @@ class ComposerManager
     {
         $namespace = Str::finish($namespace, '\\');
 
-        return $this->forget("autoload.psr-4.{$namespace}");
+        if (is_array($this->data['autoload']['psr-4'] ?? null)) {
+            unset($this->data['autoload']['psr-4'][$namespace]);
+        }
+
+        return $this;
     }
 
     public function reload()
@@ -182,13 +218,8 @@ class ComposerManager
 
     public function save()
     {
-        file_put_contents(
-            $this->composerFile,
-            json_encode(
-                $this->preserveEmptyObjects($this->data, $this->shape),
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-            )
-        );
+        // The file that was read, encoded as Composer::modify() does (no trailing newline).
+        file_put_contents($this->composerFile, $this->toJson(JSON_UNESCAPED_UNICODE));
 
         return $this;
     }
@@ -198,39 +229,9 @@ class ComposerManager
         return $this->save()->reload();
     }
 
-    public function toJson()
+    public function toJson(int $flags = 0)
     {
-        return json_encode($this->preserveEmptyObjects($this->data, $this->shape), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    }
-
-    /**
-     * Restore an empty array to {} wherever the file held a JSON object.
-     */
-    protected function preserveEmptyObjects(mixed $value, mixed $shape): mixed
-    {
-        if (! is_array($value)) {
-            return $value;
-        }
-
-        if ($shape instanceof \stdClass) {
-            if ($value === []) {
-                return new \stdClass;
-            }
-
-            $shape = get_object_vars($shape);
-        }
-
-        if (! is_array($shape)) {
-            return $value;
-        }
-
-        foreach ($value as $key => $item) {
-            if (array_key_exists($key, $shape)) {
-                $value[$key] = $this->preserveEmptyObjects($item, $shape[$key]);
-            }
-        }
-
-        return $value;
+        return json_encode($this->encodable($this->data), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | $flags);
     }
 
     public function toArray()

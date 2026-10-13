@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Artisan;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Tests\BootsTestApplication;
+use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 uses(BootsTestApplication::class);
 
@@ -53,9 +54,9 @@ describe('when ddd.autoload.commands = true', function () {
 
 describe('caching', function () {
     it('remembers the last cached state', function () {
-        DomainCache::set('domain-commands', []);
-
         config()->set('ddd.autoload.commands', true);
+
+        DiscoveryCacheFixture::write(['commands' => []]);
 
         $mock = AutoloadManager::partialMock();
         $mock->run();
@@ -65,7 +66,7 @@ describe('caching', function () {
     });
 
     it('can bust the cache', function () {
-        DomainCache::set('domain-commands', []);
+        DiscoveryCacheFixture::write(['commands' => []]);
         DomainCache::clear();
 
         config()->set('ddd.autoload.commands', true);

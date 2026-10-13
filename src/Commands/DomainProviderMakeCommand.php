@@ -2,11 +2,11 @@
 
 namespace Tey\LaravelDDD\Commands;
 
-use Illuminate\Foundation\Console\ProviderMakeCommand;
 use Tey\LaravelDDD\Commands\Concerns\HasDomainStubs;
 use Tey\LaravelDDD\Commands\Concerns\ResolvesDomainFromInput;
+use Tey\Mod\Commands\ProviderCommand;
 
-class DomainProviderMakeCommand extends ProviderMakeCommand
+class DomainProviderMakeCommand extends ProviderCommand
 {
     use HasDomainStubs,
         ResolvesDomainFromInput;

@@ -2,6 +2,11 @@
 
 All notable changes to `laravel-ddd` will be documented in this file.
 
+## Unreleased
+
+### Added
+- Repository agent guidance (`AGENTS.md` and `CLAUDE.md`) and an `llms.txt` documentation index with an offline CI file-target check. (#153)
+
 ## [3.3.0] - 2026-10-08
 
 ### Changed

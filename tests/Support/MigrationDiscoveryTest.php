@@ -3,11 +3,13 @@
 use Tey\LaravelDDD\LaravelDDDServiceProvider;
 use Tey\LaravelDDD\Support\DomainCache;
 use Tey\LaravelDDD\Support\DomainMigration;
+use Tey\LaravelDDD\Support\Path;
+use Tey\LaravelDDD\Tests\Support\DiscoveryCacheFixture;
 
 it('does not register cached migration paths when discovery is disabled', function () {
-    $paths = [base_path('src/Domain/Billing/Database/Migrations')];
+    $paths = [Path::normalize(base_path('src/Domain/Billing/Database/Migrations'))];
 
-    DomainCache::set('domain-migration-paths', $paths);
+    $written = DiscoveryCacheFixture::writeMigrationPaths(['src/Domain/Billing/Database/Migrations']);
     config(['ddd.autoload.migrations' => false]);
 
     expect(DomainMigration::paths())->toBe([]);
@@ -15,14 +17,14 @@ it('does not register cached migration paths when discovery is disabled', functi
     (new LaravelDDDServiceProvider($this->app))->packageRegistered();
 
     expect($this->app['migrator']->paths())->not->toContain($paths[0]);
-    expect(DomainCache::get('domain-migration-paths'))->toBe($paths);
+    expect(file_get_contents(DomainCache::path('migration-paths')))->toBe($written);
 });
 
 it('registers cached migration paths when discovery is enabled', function () {
-    $paths = [base_path('src/Domain/Billing/Database/Migrations')];
+    $paths = [Path::normalize(base_path('src/Domain/Billing/Database/Migrations'))];
 
-    DomainCache::set('domain-migration-paths', $paths);
     config(['ddd.autoload.migrations' => true]);
+    DiscoveryCacheFixture::writeMigrationPaths(['src/Domain/Billing/Database/Migrations']);
 
     expect(DomainMigration::paths())->toBe($paths);
 
@@ -32,9 +34,9 @@ it('registers cached migration paths when discovery is enabled', function () {
 });
 
 it('returns no migration paths when discovery is disabled without a manifest', function () {
-    DomainCache::forget('domain-migration-paths');
+    DomainCache::forget('migration-paths');
     config(['ddd.autoload.migrations' => false]);
 
     expect(DomainMigration::paths())->toBe([]);
-    expect(DomainCache::has('domain-migration-paths'))->toBeFalse();
+    expect(DomainCache::has('migration-paths'))->toBeFalse();
 });

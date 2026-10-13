@@ -7,9 +7,13 @@ use Illuminate\Support\Facades\Event;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Tey\LaravelDDD\Facades\Autoload;
+use Tey\LaravelDDD\Listeners\CacheClearSubscriber;
 use Tey\LaravelDDD\Listeners\MigrationsPrunedSubscriber;
 use Tey\LaravelDDD\Support\AutoloadManager;
 use Tey\LaravelDDD\Support\DomainMigration;
+use Tey\LaravelDDD\Support\Layout\DddLayout;
+use Tey\Mod\Layout\CompiledLayout;
+use Tey\Mod\ModServiceProvider;
 
 class LaravelDDDServiceProvider extends PackageServiceProvider
 {
@@ -121,6 +125,10 @@ class LaravelDDDServiceProvider extends PackageServiceProvider
             return new AutoloadManager;
         });
 
+        ModServiceProvider::registerGenerationServices($this->app);
+        // Preview identity formatting reads the host's live layout through the public value.
+        $this->app->bindIf(CompiledLayout::class, fn () => DddLayout::current()->compiled());
+
         $this->app->bind('ddd', DomainManager::class);
         $this->app->bind('ddd.autoloader', AutoloadManager::class);
         $this->app->bind('ddd.config', ConfigManager::class);
@@ -143,6 +151,7 @@ class LaravelDDDServiceProvider extends PackageServiceProvider
         }
 
         Event::subscribe(MigrationsPrunedSubscriber::class);
+        Event::subscribe(CacheClearSubscriber::class);
     }
 
     public function packageRegistered()

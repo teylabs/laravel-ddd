@@ -4,6 +4,8 @@ namespace Tey\LaravelDDD\Support;
 
 use Illuminate\Support\Str;
 use Tey\LaravelDDD\Enums\LayerType;
+use Tey\LaravelDDD\Support\Layout\DddPlacement;
+use Tey\Mod\Exceptions\ModException;
 
 class Layer
 {
@@ -34,6 +36,11 @@ class Layer
             return $this->path;
         }
 
+        // A class this layer owns is placed by the layout; anything else is plain path arithmetic.
+        if (str_starts_with($path, $this->namespace.'\\') && ($owned = DddPlacement::current()->pathOfClass($path)) !== null) {
+            return $owned;
+        }
+
         $baseName = class_basename($path);
 
         $relativePath = str($path)
@@ -49,10 +56,15 @@ class Layer
 
     public function namespaceFor(string $type, ?string $name = null): string
     {
-        $namespace = collect([
-            $this->namespace,
-            DomainResolver::getRelativeObjectNamespace($type),
-        ])->filter()->implode('\\');
+        try {
+            $namespace = DddPlacement::current()->namespaceIn($type, $this);
+        } catch (ModException) {
+            // A layer the layout has no root or domain for (a bare namespace): the conventional folder.
+            $namespace = collect([
+                $this->namespace,
+                DomainResolver::getRelativeObjectNamespace($type),
+            ])->filter()->implode('\\');
+        }
 
         if ($name) {
             $namespace .= "\\{$name}";
