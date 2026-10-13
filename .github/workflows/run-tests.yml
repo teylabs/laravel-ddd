@@ -2,12 +2,17 @@ name: run-tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, '*.x']
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

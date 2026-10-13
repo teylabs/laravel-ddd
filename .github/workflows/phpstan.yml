@@ -2,15 +2,26 @@ name: PHPStan
 
 on:
   push:
+    branches: [main, '*.x']
+    paths:
+      - '**.php'
+      - 'phpstan.neon.dist'
+      - 'composer.json'
+  pull_request:
     paths:
       - '**.php'
       - 'phpstan.neon.dist'
       - 'composer.json'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   phpstan:
     name: phpstan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 

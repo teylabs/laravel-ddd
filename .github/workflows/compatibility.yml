@@ -39,6 +39,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   classifier-self-test:
     # The coverage policy is only as trustworthy as the classifier that decides
@@ -47,6 +51,7 @@ jobs:
     # checked before anything relies on the verdict.
     name: classifier self-test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -68,6 +73,7 @@ jobs:
     # stable so a dev branch cannot be silently reported as released coverage.
     name: released - L${{ matrix.laravel }} - P${{ matrix.php }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: classifier-self-test
     strategy:
       fail-fast: false
@@ -155,6 +161,7 @@ jobs:
     # ^11.45.2|^12.52.0|^13.0). The declared floors are checked by floor-smoke.
     name: lowest installable - L${{ matrix.laravel }} - P${{ matrix.php }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: classifier-self-test
     strategy:
       fail-fast: false
@@ -245,6 +252,7 @@ jobs:
     # installed version before it does anything.
     name: floor smoke - laravel/framework ${{ matrix.floor }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: classifier-self-test
     strategy:
       fail-fast: false
@@ -345,6 +353,7 @@ jobs:
     # through the coverage classifier.
     name: dev canary - laravel/framework dev-master
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       install: ${{ steps.install.outcome }}
       tests: ${{ steps.tests.outcome }}
@@ -408,6 +417,7 @@ jobs:
   report:
     name: compatibility summary
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classifier-self-test, released, lowest-installable, floor-smoke, dev-canary]
     if: always()
 
